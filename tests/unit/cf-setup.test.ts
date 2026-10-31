@@ -38,7 +38,7 @@ function fakeCf(state: {
       } else if (path.startsWith('/accounts/acct1/storage/kv/namespaces') && method === 'GET') r = ok([]);
       else if (path.startsWith('/accounts/acct1/storage/kv/namespaces')) r = ok({ id: 'kv1' });
       else if (u.pathname.includes('/r2/buckets')) r = state.r2Enabled === false ? err(403, 10042, 'Please enable R2 through the Cloudflare Dashboard.') : ok({});
-      else if (u.pathname.endsWith('/zones')) r = ok((state.zones || []).filter((z) => z.name === u.searchParams.get('name')));
+      else if (u.pathname.endsWith('/zones')) r = ok((state.zones || []).filter((z) => !u.searchParams.get('name') || z.name === u.searchParams.get('name')));
       else if (method === 'GET' && u.pathname.endsWith('/workers/domains')) r = ok((state.workerDomains || []).filter((d) => d.hostname === u.searchParams.get('hostname')));
       else if (method === 'DELETE' && u.pathname.includes('/workers/domains/')) r = ok(null);
     }
@@ -63,13 +63,28 @@ describe('cf-setup', () => {
   });
 
   it('explains the D1 database limit and lists existing databases', async () => {
-    const dbs = Array.from({ length: 10 }, (_, i) => ({ uuid: `u${i}`, name: `old-project-${i}`, num_tables: i === 3 ? 0 : 5 }));
-    const { impl } = fakeCf({ dbs });
+    // The list API reports num_tables: 0 even for databases that have data, so the real tables are queried.
+    const dbs = Array.from({ length: 10 }, (_, i) => ({ uuid: `u${i}`, name: `old-project-${i}`, num_tables: 0 }));
+    const tables = Object.fromEntries(dbs.map((d, i) => [d.uuid, i === 3 ? [] : ['products', 'orders']]));
+    const { impl } = fakeCf({ dbs, tables });
     const e = await run(env, { fetchImpl: impl, ...quiet }).catch((x) => x);
     expect(e).toBeInstanceOf(SetupError);
     expect(e.message).toContain('maximum number of D1 databases (10)');
-    expect(e.message).toContain('old-project-3  (tables: 0');
+    expect(e.message).toContain('old-project-3  (EMPTY — can be reused');
+    expect(e.message).toContain('old-project-0  (2 tables: products, orders');
     expect(e.message).toContain('D1_DATABASE_NAME');
+  });
+
+  it('reports the D1 limit AND a wrong custom domain in the same run', async () => {
+    const dbs = Array.from({ length: 10 }, (_, i) => ({ uuid: `u${i}`, name: `db${i}` }));
+    const { impl, calls } = fakeCf({ dbs, tables: Object.fromEntries(dbs.map((d) => [d.uuid, ['t']])), zones: [] });
+    const e = await run({ ...env, CUSTOM_DOMAIN: 'shop.sayadbayezid.com' }, { fetchImpl: impl, ...quiet }).catch((x) => x);
+    expect(e.message).toMatch(/^2 problems need your action/);
+    expect(e.message).toContain('PROBLEM 1: Your Cloudflare account already has the maximum');
+    expect(e.message).toContain('PROBLEM 2: "shop.sayadbayezid.com" is not a domain in the Cloudflare account');
+    expect(e.message).toContain('No empty database found');
+    // nothing else is created when the run is going to fail
+    expect(calls.some((c) => c.startsWith('POST') && c.includes('/storage/kv/'))).toBe(false);
   });
 
   it('reuses an empty existing database via D1_DATABASE_NAME', async () => {
@@ -99,8 +114,10 @@ describe('cf-setup', () => {
   });
 
   it('rejects a domain that is not in this Cloudflare account, or not active', async () => {
-    const a = fakeCf({ zones: [] });
-    await expect(run({ ...env, CUSTOM_DOMAIN: 'shop.connectwithbayezid.it.com' }, { fetchImpl: a.impl, ...quiet })).rejects.toThrow(/not a domain in the Cloudflare account "Bayezid"/);
+    const a = fakeCf({ zones: [{ name: 'connectwithbayezid.it.com', status: 'active' }] });
+    const e = await run({ ...env, CUSTOM_DOMAIN: 'shop.sayadbayezid.com' }, { fetchImpl: a.impl, ...quiet }).catch((x) => x);
+    expect(e.message).toContain('"shop.sayadbayezid.com" is not a domain in the Cloudflare account "Bayezid"');
+    expect(e.message).toContain('Domains in this account: connectwithbayezid.it.com (active)');
     const b = fakeCf({ zones: [{ name: 'sayadbayezid.com', status: 'pending' }] });
     await expect(run({ ...env, CUSTOM_DOMAIN: 'shop.sayadbayezid.com' }, { fetchImpl: b.impl, ...quiet })).rejects.toThrow(/"pending"/);
   });

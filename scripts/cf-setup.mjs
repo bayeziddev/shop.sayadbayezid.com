@@ -106,13 +106,19 @@ async function listAllD1(cf, acct) {
   return all;
 }
 
+/** Real user tables of a database (the list API's num_tables is not reliable). null = could not inspect. */
+async function tablesOf(cf, acct, uuid) {
+  const q = await cf('POST', `/accounts/${acct}/d1/database/${uuid}/query`, {
+    sql: "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name != 'd1_migrations'",
+  });
+  if (!q.ok) return null;
+  return (q.result?.[0]?.results || []).map((r) => r.name);
+}
+
 /** Refuse to mix this app's tables into a database that belongs to another project. */
 async function assertCompatibleD1(cf, acct, db) {
-  const q = await cf('POST', `/accounts/${acct}/d1/database/${db.uuid}/query`, {
-    sql: "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'",
-  });
-  if (!q.ok) return; // cannot inspect — let migrations decide
-  const tables = (q.result?.[0]?.results || []).map((r) => r.name);
+  const tables = await tablesOf(cf, acct, db.uuid);
+  if (!tables) return; // cannot inspect — let migrations decide
   const ours = tables.includes('orders') && tables.includes('packages');
   if (tables.length && !ours) {
     throw new SetupError(
@@ -134,15 +140,22 @@ async function ensureD1(cf, acct, dbName) {
   if (c.ok) return { id: c.result.uuid, created: true };
   if (hasCode(c, 7406) || /limit/i.test(errText(c))) {
     const all = await listAllD1(cf, acct);
-    const rows = all
-      .map((d) => `   • ${d.name}  (tables: ${d.num_tables ?? '?'}, size: ${Math.round((d.file_size || 0) / 1024)} KB, created: ${(d.created_at || '').slice(0, 10)})`)
-      .join('\n');
+    const described = [];
+    for (const d of all) {
+      const t = await tablesOf(cf, acct, d.uuid);
+      const what = t === null ? 'tables: unknown' : t.length === 0 ? 'EMPTY — can be reused' : `${t.length} tables: ${t.slice(0, 5).join(', ')}${t.length > 5 ? ', …' : ''}`;
+      described.push({ empty: t !== null && t.length === 0, line: `   • ${d.name}  (${what}; ${Math.round((d.file_size || 0) / 1024)} KB, created ${(d.created_at || '').slice(0, 10)})` });
+    }
+    const rows = described.map((d) => d.line).join('\n');
+    const empties = described.filter((d) => d.empty).length;
     throw new SetupError(
       `Your Cloudflare account already has the maximum number of D1 databases (${all.length}) on its plan, so "${dbName}" could not be created.\n` +
         `Existing databases:\n${rows}\n` +
         'Fix (pick one):\n' +
         '  A) Delete a database you no longer use: Cloudflare dashboard → Storage & databases → D1 → (database) → Settings → Delete. Then re-run this workflow.\n' +
-        '  B) Reuse an EMPTY database (tables: 0): add the GitHub variable D1_DATABASE_NAME = <its name>, then re-run.',
+        (empties
+          ? '  B) Reuse a database marked EMPTY above: add the GitHub variable D1_DATABASE_NAME = <its name>, then re-run.'
+          : '  B) (No empty database found — option A is needed.)'),
     );
   }
   throw new SetupError(`D1 create failed: ${errText(c)}`);
@@ -190,9 +203,12 @@ async function checkCustomDomains(cf, acct, opts, log, warn) {
       continue;
     }
     if (!z.zone) {
+      const zl = await cf('GET', `/zones?account.id=${acct.id}&per_page=50`);
+      const inAccount = zl.ok && zl.result?.length ? zl.result.map((x) => `${x.name} (${x.status})`).join(', ') : 'none';
       throw new SetupError(
-        `"${host}" is not a domain in the Cloudflare account "${acct.name}". Custom domains only work for domains added to the SAME account as the API token. ` +
-          'Either add the domain to this account, or create the API token (and CLOUDFLARE_ACCOUNT_ID) from the account that has the domain.',
+        `"${host}" is not a domain in the Cloudflare account "${acct.name}". Domains in this account: ${inAccount}.\n` +
+          'Custom domains only work for a domain that is ACTIVE in the SAME Cloudflare account as the API token. Fix: change the GitHub variable CUSTOM_DOMAIN to a domain listed above ' +
+          '(or delete the variable to use only the workers.dev URL), or move this domain\'s DNS to this Cloudflare account first (docs/DEPLOY.md §6).',
       );
     }
     if (z.zone.status !== 'active') {
@@ -276,10 +292,22 @@ export async function run(env, { fetchImpl = fetch, dry = false, log = console.l
   const acct = dry ? { id: '0'.repeat(32), name: 'dry-run' } : await resolveAccount(cf, env);
   log(`Cloudflare account: ${acct.name}`);
   const sub = dry ? 'example' : await workersSubdomain(cf, acct.id, opts.wantedSubdomain, log);
-  const d1 = dry ? { id: '11111111-1111-1111-1111-111111111111', created: false } : await ensureD1(cf, acct.id, opts.dbName);
+  // Report every problem in ONE run instead of one per run.
+  const problems = [];
+  const attempt = async (fn) => {
+    try {
+      return await fn();
+    } catch (e) {
+      if (e instanceof SetupError) { problems.push(e.message); return null; }
+      throw e;
+    }
+  };
+  const d1 = dry ? { id: '11111111-1111-1111-1111-111111111111', created: false } : await attempt(() => ensureD1(cf, acct.id, opts.dbName));
+  if (!dry && opts.domains.length) await attempt(() => checkCustomDomains(cf, acct, opts, log, warn));
+  if (problems.length === 1) throw new SetupError(problems[0]);
+  if (problems.length > 1) throw new SetupError(`${problems.length} problems need your action:\n\n` + problems.map((p, i) => `PROBLEM ${i + 1}: ${p}`).join('\n\n'));
   const kv = dry ? { id: '2'.repeat(32), created: false } : await ensureKV(cf, acct.id, `${opts.name}-kv`);
   const r2 = dry ? { ok: true } : await ensureR2(cf, acct.id, `${opts.name}-media`);
-  if (!dry && opts.domains.length) await checkCustomDomains(cf, acct, opts, log, warn);
 
   const workersDevUrl = `https://${opts.name}.${sub}.workers.dev`;
   const siteUrl = opts.domains.length ? `https://${opts.domains[0]}` : workersDevUrl;
