@@ -79,7 +79,9 @@ jobs:
         if: steps.creds.outputs.ready == 'true'
         env:
           WORKER_NAME: ${{ vars.WORKER_NAME || 'cwb-agency' }}
+          D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
           CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+          CUSTOM_DOMAIN_TAKEOVER: ${{ vars.CUSTOM_DOMAIN_TAKEOVER }}
           WORKERS_DEV_SUBDOMAIN: ${{ vars.WORKERS_DEV_SUBDOMAIN }}
           PAYMENT_MODE: ${{ vars.PAYMENT_MODE || 'sandbox' }}
           ENABLE_BROWSER_RENDERING: ${{ vars.ENABLE_BROWSER_RENDERING || 'false' }}
@@ -177,7 +179,7 @@ jobs:
             echo "| | URL |"
             echo "|---|---|"
             echo "| Website (workers.dev) | $DEV |"
-            if [ -n "$DOMAIN" ]; then echo "| Website (custom domain) | https://$DOMAIN |"; else echo "| Custom domain | not set yet — see docs/DEPLOY.md step 5 |"; fi
+            if [ -n "$DOMAIN" ]; then for d in $(echo "$DOMAIN" | tr ',' ' '); do echo "| Website (custom domain) | https://$d |"; done; else echo "| Custom domain | not set yet — see docs/DEPLOY.md step 5 |"; fi
             echo "| Admin panel | $SITE/admin/ |"
             echo "| Health check | $DEV/healthz |"
             echo ""
