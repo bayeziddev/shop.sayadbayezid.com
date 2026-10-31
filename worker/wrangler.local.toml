@@ -1,0 +1,31 @@
+# Local development & tests only (no remote-only bindings).
+name = "shop-sayadbayezid-local"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "../dist"
+binding = "ASSETS"
+html_handling = "auto-trailing-slash"
+not_found_handling = "none"
+
+[vars]
+SITE_URL = "http://localhost:8787"
+APP_ENV = "development"
+PAYMENT_MODE = "sandbox"
+META_PIXEL_ID = ""
+
+[[d1_databases]]
+binding = "DB"
+database_name = "shop-local"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "local-kv"
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "local-media"

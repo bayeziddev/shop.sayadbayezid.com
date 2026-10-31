@@ -1,0 +1,13 @@
+{
+  "name": "ওয়েবসাইট প্যাকেজ ও ওয়েব ডেভেলপমেন্ট",
+  "short_name": "ওয়েব স্টুডিও",
+  "lang": "bn",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0a1f",
+  "theme_color": "#0b0a1f",
+  "icons": [
+    { "src": "/assets/img/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/assets/img/icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
