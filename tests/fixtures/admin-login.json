@@ -1,0 +1,3 @@
+{ "setup": { "token": "test-setup-token", "name": "পরীক্ষা অ্যাডমিন", "email": "admin@test.local", "password": "test-password-123" },
+  "login": { "email": "admin@test.local", "password": "test-password-123" },
+  "badLogin": { "email": "admin@test.local", "password": "wrong-password" } }

@@ -1,0 +1,23 @@
+@font-face { font-family: 'Hind Siliguri'; src: url('/assets/fonts/hind-siliguri-bengali-400-normal.woff2') format('woff2'); font-weight: 400; }
+@font-face { font-family: 'Hind Siliguri'; src: url('/assets/fonts/hind-siliguri-bengali-600-normal.woff2') format('woff2'); font-weight: 600; }
+@page { size: A4; margin: 12mm; }
+body { font-family: 'Hind Siliguri', sans-serif; color: #15122e; background: #f3f2fb; margin: 0; }
+.inv { max-width: 800px; margin: 24px auto; background: #fff; padding: 40px; border-radius: 14px; border-top: 8px solid #6366f1; }
+header { display: flex; justify-content: space-between; gap: 24px; }
+h1 { margin: 0 0 6px; font-size: 26px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); -webkit-background-clip: text; background-clip: text; color: transparent; }
+h2 { margin: 0; letter-spacing: 2px; color: #6366f1; }
+.right { text-align: right; }
+.bill { margin: 28px 0 18px; } .bill h3 { margin: 0 0 4px; font-size: 14px; color: #6b6893; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; background: #f1f0fb; padding: 10px; font-size: 14px; }
+td { padding: 10px; border-bottom: 1px solid #ecebf5; }
+td.sub { padding-left: 26px; color: #55527a; }
+.num { text-align: right; white-space: nowrap; }
+tfoot td { border: 0; padding: 6px 10px; text-align: right; }
+tfoot td:first-child { text-align: right; }
+tfoot .grand td { font-size: 18px; font-weight: 600; border-top: 2px solid #15122e; }
+.status { display: inline-block; margin-top: 18px; padding: 6px 16px; border-radius: 999px; border: 2px solid #ef4444; color: #ef4444; font-weight: 600; }
+.status.paid { border-color: #16a34a; color: #16a34a; }
+footer { margin-top: 30px; font-size: 13px; color: #6b6893; }
+.noprint { text-align: center; } .noprint button { font: inherit; padding: 10px 22px; border-radius: 10px; border: 0; background: #6366f1; color: #fff; cursor: pointer; }
+@media print { body { background: #fff; } .inv { margin: 0; padding: 0; border-radius: 0; box-shadow: none; } .noprint { display: none; } }

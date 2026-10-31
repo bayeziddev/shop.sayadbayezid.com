@@ -1,0 +1,10 @@
+{
+  "name": "পরীক্ষা ক্লায়েন্ট",
+  "phone": "01711000000",
+  "email": "client@example.com",
+  "business_name": "পরীক্ষা ফ্যাশন",
+  "payment_method": "bank_transfer",
+  "agree": true,
+  "items": [{ "packageSlug": "fashion-premium", "addons": [{ "name": "অতিরিক্ত পেজ", "quantity": 2 }, { "name": "এআই চ্যাটবট", "quantity": 1 }] }],
+  "attribution": { "utm_source": "facebook", "utm_medium": "paid_social", "utm_campaign": "eid", "utm_content": "ad-01" }
+}
