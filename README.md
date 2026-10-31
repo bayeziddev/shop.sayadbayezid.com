@@ -8,7 +8,17 @@ Built on **Cloudflare Workers (Hono + TypeScript), D1, KV and R2**, deployed by 
 - **Operations runbook:** [`docs/RUNBOOK.md`](docs/RUNBOOK.md)
 - Original pixel / GA4 / GTM notes: `docs/reference/`
 
-## Quick start
+## Live URLs
+
+| | URL |
+|---|---|
+| Website (Cloudflare Workers) | `https://cwb-agency.<your-workers-subdomain>.workers.dev`. The exact link is printed in every **Actions → Deploy to Cloudflare Workers** run summary and under **Environments → production**. |
+| Admin panel | `<website>/admin/` |
+| Custom domain (after DNS moves to Cloudflare) | `https://shop.sayadbayezid.com` |
+
+**First deploy:** follow [`docs/DEPLOY.md`](docs/DEPLOY.md). Add two GitHub secrets, then push to `main`. The workflow creates the Worker, D1, KV and R2 automatically.
+
+## Quick start (local)
 
 ```bash
 npm ci
@@ -26,4 +36,4 @@ npm run test:e2e    # Playwright: configure → pay → requirements
 
 ## Deploy
 
-See [SPEC §17](docs/SPEC.md#17-development-environment--deployment) for one-time Cloudflare setup. After that, every push to `main` runs tests, takes a D1 backup, applies migrations, syncs secrets and deploys.
+See [`docs/DEPLOY.md`](docs/DEPLOY.md). Every push to `main` runs tests, then creates or finds the Cloudflare resources, takes a D1 backup, applies migrations, deploys, syncs secrets and health-checks the live URL.

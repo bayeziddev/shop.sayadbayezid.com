@@ -18,3 +18,9 @@ export async function readJson<T = Record<string, unknown>>(c: Context): Promise
     fail(400, 'অনুরোধের তথ্য সঠিক নয়');
   }
 }
+
+/** R2 is optional (it must be activated in the Cloudflare dashboard). */
+export function requireMedia(env: { MEDIA?: R2Bucket }): R2Bucket {
+  if (!env.MEDIA) fail(503, 'ফাইল সংরক্ষণ (আর২) এখনো চালু করা হয়নি — ক্লাউডফ্লেয়ার ড্যাশবোর্ডে আর২ চালু করে আবার ডিপ্লয় করুন', 'storage_disabled');
+  return env.MEDIA;
+}

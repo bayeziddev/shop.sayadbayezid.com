@@ -13,8 +13,9 @@
     "test": "vitest run",
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
     "db:migrate:local": "wrangler d1 migrations apply DB --local --config worker/wrangler.local.toml",
-    "db:migrate:remote": "wrangler d1 migrations apply DB --remote --config worker/wrangler.toml",
-    "deploy": "npm run build && wrangler deploy --config worker/wrangler.toml"
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote --config worker/wrangler.deploy.toml",
+    "deploy": "npm run build && npm run cf:setup && npm run db:migrate:remote && wrangler deploy --config worker/wrangler.deploy.toml",
+    "cf:setup": "node scripts/cf-setup.mjs"
   },
   "dependencies": {
     "@cloudflare/puppeteer": "^1.4.0",

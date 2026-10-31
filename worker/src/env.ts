@@ -3,7 +3,8 @@ import type { Role } from '../../shared/status';
 export interface Env {
   DB: D1Database;
   KV: KVNamespace;
-  MEDIA: R2Bucket;
+  /** Optional: R2 must be enabled on the account. Without it, uploads are disabled but the site works. */
+  MEDIA?: R2Bucket;
   ASSETS: Fetcher;
   AI?: Ai;
   BROWSER?: Fetcher;

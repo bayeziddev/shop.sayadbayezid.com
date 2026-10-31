@@ -280,9 +280,10 @@ orders.get('/invoice/:no', async (c) => {
   if (!(await verifyPortalToken(c.env, no, c.req.query('t')))) return c.text('পাওয়া যায়নি', 404);
   const order = await getOrderByNumber(c.env, no);
   // Paid invoices: real PDF via Browser Rendering (cached in R2) when the binding exists.
-  if (order?.invoice_number && c.env.BROWSER && c.req.query('format') !== 'html') {
+  if (order?.invoice_number && c.env.BROWSER && c.env.MEDIA && c.req.query('format') !== 'html') {
     const key = `invoices/${order.invoice_number}.pdf`;
-    let obj = await c.env.MEDIA.get(key);
+    const media = c.env.MEDIA;
+    let obj = await media.get(key);
     if (!obj) {
       try {
         const puppeteer = (await import('@cloudflare/puppeteer')).default;
@@ -291,8 +292,8 @@ orders.get('/invoice/:no', async (c) => {
         await page.goto(`${c.env.SITE_URL}/invoice/${encodeURIComponent(no)}?t=${c.req.query('t')}&format=html`, { waitUntil: 'networkidle0' });
         const pdf = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '12mm', bottom: '12mm', left: '10mm', right: '10mm' } });
         await browser.close();
-        await c.env.MEDIA.put(key, pdf, { httpMetadata: { contentType: 'application/pdf' } });
-        obj = await c.env.MEDIA.get(key);
+        await media.put(key, pdf, { httpMetadata: { contentType: 'application/pdf' } });
+        obj = await media.get(key);
       } catch (e) {
         console.error('PDF render failed, falling back to printable HTML', e);
       }

@@ -63,6 +63,7 @@ app.get('/media/*', async (c) => {
   const key = decodeURIComponent(new URL(c.req.url).pathname.slice('/media/'.length));
   if (!key.startsWith('public/') || key.includes('..')) return c.notFound();
   const range = c.req.header('range');
+  if (!c.env.MEDIA) return c.notFound();
   const obj = await c.env.MEDIA.get(key, range ? { range: c.req.raw.headers } : undefined);
   if (!obj) return c.notFound();
   const headers = new Headers();

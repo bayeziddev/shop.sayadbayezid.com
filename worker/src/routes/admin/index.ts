@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { AppBindings, AdminUser } from '../../env';
-import { fail, ok, readJson } from '../../lib/http';
+import { fail, ok, readJson, requireMedia } from '../../lib/http';
 import { createSession, destroySession, requireAdmin, requirePerm, assertPerm } from '../../lib/auth';
 import { permissionsFor } from '../../lib/rbac';
 import { hashPassword, verifyPassword, decryptJson } from '../../lib/crypto';
@@ -107,6 +107,7 @@ function health(c: { env: AppBindings['Bindings'] }, s: SiteSettings) {
     { key: 'sms', label: 'এসএমএস নোটিফিকেশন', ok: !!e.SMS_API_URL, hint: 'ঐচ্ছিক' },
     { key: 'whatsapp', label: 'হোয়াটসঅ্যাপ নোটিফিকেশন', ok: !!(e.WHATSAPP_TOKEN && e.WHATSAPP_PHONE_NUMBER_ID), hint: 'ঐচ্ছিক' },
     { key: 'encryption', label: 'তথ্য এনক্রিপশন কী', ok: !!e.DATA_ENCRYPTION_KEY, hint: 'আবশ্যক — DATA_ENCRYPTION_KEY' },
+    { key: 'storage', label: 'ফাইল সংরক্ষণ (আর২)', ok: !!e.MEDIA, hint: 'ক্লাউডফ্লেয়ার ড্যাশবোর্ডে আর২ চালু করে আবার ডিপ্লয় করুন — ছবি ও ফাইল আপলোডের জন্য দরকার' },
   ];
 }
 
@@ -296,7 +297,7 @@ admin.post('/orders/:id/files', requirePerm('orders.write'), async (c) => {
   if (file.size > 95 * 1024 * 1024) fail(422, 'ফাইল খুব বড় (সর্বোচ্চ ৯৫ মেগাবাইট) — বড় ফাইলের জন্য ডেলিভারি লিংক ব্যবহার করুন');
   const safeName = file.name.replace(/[^\w.\-ঀ-৿ ]+/g, '_').slice(0, 120) || 'file';
   const key = `private/orders/${id}/delivery/${randomToken(8)}-${safeName}`;
-  await c.env.MEDIA.put(key, file.stream(), { httpMetadata: { contentType: file.type || 'application/octet-stream' } });
+  await requireMedia(c.env).put(key, file.stream(), { httpMetadata: { contentType: file.type || 'application/octet-stream' } });
   await c.env.DB.prepare("INSERT INTO order_files (order_id, kind, r2_key, filename, content_type, size) VALUES (?, 'delivery', ?, ?, ?, ?)").bind(id, key, safeName, file.type || 'application/octet-stream', file.size).run();
   await audit(c.env, c.get('admin').id, 'upload', 'order', id, { filename: safeName }, clientIp(c.req.raw));
   return ok(c, { uploaded: true }, 201);
@@ -306,7 +307,7 @@ admin.get('/orders/:id/files/:fid', async (c) => {
   const f = await c.env.DB.prepare('SELECT * FROM order_files WHERE id = ? AND order_id = ?').bind(toInt(c.req.param('fid')), toInt(c.req.param('id'))).first<{ r2_key: string; filename: string; content_type: string; kind: string }>();
   if (!f) fail(404, 'ফাইল পাওয়া যায়নি');
   if (f.kind === 'requirement_asset') assertPerm(c, 'requirements.read');
-  const obj = await c.env.MEDIA.get(f.r2_key);
+  const obj = await requireMedia(c.env).get(f.r2_key);
   if (!obj) fail(404, 'ফাইল পাওয়া যায়নি');
   return new Response(obj.body, { headers: { 'content-type': f.content_type, 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(f.filename)}`, 'cache-control': 'private, no-store' } });
 });
@@ -314,7 +315,7 @@ admin.get('/orders/:id/files/:fid', async (c) => {
 admin.delete('/orders/:id/files/:fid', requirePerm('orders.write'), async (c) => {
   const f = await c.env.DB.prepare('SELECT * FROM order_files WHERE id = ? AND order_id = ?').bind(toInt(c.req.param('fid')), toInt(c.req.param('id'))).first<{ id: number; r2_key: string }>();
   if (!f) fail(404, 'ফাইল পাওয়া যায়নি');
-  await c.env.MEDIA.delete(f.r2_key);
+  await requireMedia(c.env).delete(f.r2_key);
   await c.env.DB.prepare('DELETE FROM order_files WHERE id = ?').bind(f.id).run();
   await audit(c.env, c.get('admin').id, 'delete_file', 'order', c.req.param('id'), { file: f.id }, clientIp(c.req.raw));
   return ok(c, { deleted: true });
@@ -521,7 +522,7 @@ admin.post('/uploads', requirePerm('catalog.write'), async (c) => {
   if (file.size > 50 * 1024 * 1024) fail(422, 'ফাইল সর্বোচ্চ ৫০ মেগাবাইট');
   const ext = file.type.split('/')[1].replace('svg+xml', 'svg').replace('jpeg', 'jpg');
   const key = `public/${new Date().toISOString().slice(0, 7)}/${randomToken(10)}.${ext}`;
-  await c.env.MEDIA.put(key, file.stream(), { httpMetadata: { contentType: file.type, cacheControl: 'public, max-age=31536000, immutable' } });
+  await requireMedia(c.env).put(key, file.stream(), { httpMetadata: { contentType: file.type, cacheControl: 'public, max-age=31536000, immutable' } });
   await audit(c.env, c.get('admin').id, 'upload', 'media', key, { size: file.size, type: file.type }, clientIp(c.req.raw));
   return ok(c, { key, url: `/media/${key}` }, 201);
 });

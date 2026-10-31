@@ -4,7 +4,7 @@ import { sendAll } from './notify';
 import { notifyAdmins } from './audit';
 import { nowIso } from './util';
 
-/** Hourly maintenance (wrangler.toml [triggers]). */
+/** Hourly maintenance (cron trigger "17 * * * *", see scripts/cf-setup.mjs). */
 export async function runScheduled(env: Env): Promise<void> {
   const s = await getSettings(env);
   const now = nowIso();

@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono';
 import type { AppBindings } from '../env';
-import { fail, ok, readJson } from '../lib/http';
+import { fail, ok, readJson, requireMedia } from '../lib/http';
 import { verifyPortalToken, portalToken } from '../lib/portal-token';
 import { changeProjectStatus, getOrderByNumber, getOrderItems, type OrderRow } from '../lib/orders';
 import { encryptJson, decryptJson } from '../lib/crypto';
@@ -123,7 +123,7 @@ portal.post('/api/portal/:no/upload', async (c) => {
   if (!ALLOWED_TYPES.test(file.type)) fail(422, 'এই ধরনের ফাইল গ্রহণযোগ্য নয় (ছবি, পিডিএফ, ডক বা জিপ দিন)');
   const safeName = file.name.replace(/[^\w.\-ঀ-৿ ]+/g, '_').slice(0, 120) || 'file';
   const key = `private/orders/${o.id}/req/${randomToken(8)}-${safeName}`;
-  await c.env.MEDIA.put(key, file.stream(), { httpMetadata: { contentType: file.type } });
+  await requireMedia(c.env).put(key, file.stream(), { httpMetadata: { contentType: file.type } });
   const r = await c.env.DB.prepare("INSERT INTO order_files (order_id, kind, r2_key, filename, content_type, size) VALUES (?, 'requirement_asset', ?, ?, ?, ?) RETURNING id").bind(o.id, key, safeName, file.type, file.size).first<{ id: number }>();
   return ok(c, { id: r!.id, filename: safeName }, 201);
 });
@@ -133,7 +133,7 @@ portal.get('/api/portal/:no/files/:id', async (c) => {
   const f = await c.env.DB.prepare('SELECT * FROM order_files WHERE id = ? AND order_id = ?').bind(toInt(c.req.param('id')), o.id).first<{ r2_key: string; filename: string; content_type: string; kind: string }>();
   if (!f) fail(404, 'ফাইল পাওয়া যায়নি');
   if (f.kind === 'delivery' && !['delivered', 'completed'].includes(o.project_status)) fail(403, 'ডেলিভারির পর ফাইল পাওয়া যাবে');
-  const obj = await c.env.MEDIA.get(f.r2_key);
+  const obj = await requireMedia(c.env).get(f.r2_key);
   if (!obj) fail(404, 'ফাইল পাওয়া যায়নি');
   return new Response(obj.body, { headers: { 'content-type': f.content_type, 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(f.filename)}`, 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff' } });
 });
