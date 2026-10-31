@@ -4,7 +4,7 @@
 INSERT INTO counters (name, value) VALUES ('invoice', 0), ('order', 0);
 
 INSERT INTO settings (key, value) VALUES
- ('brand_name', '"সাইয়াদ বায়েজিদ ওয়েব স্টুডিও"'),
+ ('brand_name', '"Cwb Agency"'),
  ('brand_tagline', '"লাইভ ডেমো দেখুন, দাম জেনে নিন — আপনার ব্যবসার ওয়েবসাইট আমরা বানিয়ে দেব"'),
  ('contact_phone', '""'),
  ('contact_email', '""'),

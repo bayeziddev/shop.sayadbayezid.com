@@ -36,7 +36,7 @@ function shell() {
   app.className = '';
   const collapsed = localStorage.getItem('adm_collapsed') === '1';
   app.innerHTML = `<div class="shell ${collapsed ? 'collapsed' : ''}">
-    <nav class="side" aria-label="অ্যাডমিন মেনু"><div class="brand"><i>&lt;/&gt;</i><b>অ্যাডমিন</b></div>
+    <nav class="side" aria-label="অ্যাডমিন মেনু"><div class="brand"><i>&lt;/&gt;</i><b>Cwb Agency</b></div>
       ${NAV.map(([k, l, ic]) => `<a href="#/${k}" data-nav="${k}"><span class="ic" aria-hidden="true">${ic}</span><span class="lbl">${esc(l)}</span>${k === 'leads' || k === 'chats' ? `<span class="badge-n" data-count="${k}" hidden></span>` : ''}</a>`).join('')}
       <a href="#" class="collapse-btn" data-collapse><span class="ic">⇆</span><span class="lbl">মেনু ছোট করুন</span></a></nav>
     <main class="main"><div class="topbar"><button class="btn icon" data-open-side aria-label="মেনু">☰</button><button class="btn icon" data-open-right aria-label="নোটিফিকেশন">🔔 <span data-unread-top></span></button></div><div data-view></div></main>

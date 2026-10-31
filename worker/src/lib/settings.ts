@@ -34,7 +34,7 @@ export interface SiteSettings {
 }
 
 export const SETTINGS_DEFAULTS: SiteSettings = {
-  brand_name: 'ওয়েব স্টুডিও',
+  brand_name: 'Cwb Agency',
   brand_tagline: '',
   contact_phone: '',
   contact_email: '',

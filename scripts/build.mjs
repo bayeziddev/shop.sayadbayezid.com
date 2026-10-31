@@ -16,6 +16,7 @@ await build({ entryPoints: ['shared/pricing.ts'], outfile: `${out}/assets/js/pri
 
 const fonts = [
   'node_modules/@fontsource-variable/anek-bangla/files/anek-bangla-bengali-wght-normal.woff2',
+  'node_modules/@fontsource-variable/anek-bangla/files/anek-bangla-latin-wght-normal.woff2',
   'node_modules/@fontsource/hind-siliguri/files/hind-siliguri-bengali-400-normal.woff2',
   'node_modules/@fontsource/hind-siliguri/files/hind-siliguri-bengali-600-normal.woff2',
   'node_modules/@fontsource/hind-siliguri/files/hind-siliguri-latin-400-normal.woff2',
