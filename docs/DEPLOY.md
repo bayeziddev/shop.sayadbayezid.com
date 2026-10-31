@@ -13,7 +13,10 @@
 | 2. API token | Cloudflare | 3 min |
 | 3. GitHub secrets | GitHub | 5 min |
 | 4. First deploy → **live on workers.dev** | GitHub Actions | ~6 min |
-| 5. (later) `shop.sayadbayezid.com` | Hostinger + Cloudflare | 15 min + DNS wait |
+| 5. **Custom domain `connectwithbayezid.it.com`** (already on Cloudflare — recommended) | GitHub variable | 2 min |
+| 6. (optional) `shop.sayadbayezid.com` (DNS at Hostinger) | Hostinger + Cloudflare | 15 min + DNS wait |
+
+> **Use ONE Cloudflare account for everything.** The API token, the `CLOUDFLARE_ACCOUNT_ID` and the domain `connectwithbayezid.it.com` must all belong to the **same** Cloudflare account. The deploy log prints `Cloudflare account: <name>` so you can check.
 
 ---
 
@@ -64,7 +67,9 @@ Go to **github.com/bayeziddev/shop.sayadbayezid.com → Settings → Secrets and
 | `WORKER_NAME` | `cwb-agency` (default) | first part of the workers.dev URL |
 | `WORKERS_DEV_SUBDOMAIN` | `cwbagency` | only if you skipped choosing one in step 1 |
 | `PAYMENT_MODE` | `sandbox` (default) / `live` | keep `sandbox` until live SSLCommerz keys are set. In sandbox no Purchase event is ever sent. |
-| `CUSTOM_DOMAIN` | `shop.sayadbayezid.com` | add **only after step 5** |
+| `CUSTOM_DOMAIN` | `connectwithbayezid.it.com,www.connectwithbayezid.it.com` | one or more hostnames, comma-separated; the first is the main URL (see step 5) |
+| `CUSTOM_DOMAIN_TAKEOVER` | `true` | move the hostname away from an old Worker that currently uses it |
+| `D1_DATABASE_NAME` | `my-empty-db` | reuse an **empty** existing D1 database (only if the account hit its database limit) |
 | `ENABLE_BROWSER_RENDERING` | `true` | real PDF invoices; otherwise a print-to-PDF page is used |
 
 ## 4. First deploy
@@ -92,7 +97,22 @@ Go to **github.com/bayeziddev/shop.sayadbayezid.com → Settings → Secrets and
 
 ---
 
-## 5. Using `shop.sayadbayezid.com` (domain registered at Hostinger)
+## 5. Custom domain `connectwithbayezid.it.com` — recommended
+
+This domain is **already on Cloudflare**, so you don't need to change any DNS. It also matches the brand: **C**onnect **w**ith **B**ayezid = **Cwb** Agency.
+
+**Recommended setup:** the main site on the bare domain, with `www` redirecting to it automatically.
+
+1. In Cloudflare, make sure the domain is **Active** and in the **same account** as your API token.
+2. Under **DNS → Records**, delete any old `A`, `AAAA` or `CNAME` record for `connectwithbayezid.it.com` (`@`) and `www`. If the old Worker uses the domain, either remove it there (**Workers & Pages → old worker → Settings → Domains & Routes**), or set the variable `CUSTOM_DOMAIN_TAKEOVER = true` and the deploy moves it for you.
+3. In GitHub, go to **Settings → Secrets and variables → Actions → Variables → New variable** and add `CUSTOM_DOMAIN` = `connectwithbayezid.it.com,www.connectwithbayezid.it.com`.
+4. Go to **Actions → Deploy to Cloudflare Workers → Run workflow**. Cloudflare creates the DNS records and SSL certificates.
+   - The site is live at `https://connectwithbayezid.it.com`, and `www.` redirects to it.
+   - `https://cwb-agency.<subdomain>.workers.dev` keeps working as a backup.
+
+If you already use the bare domain for something else, use a subdomain instead: `CUSTOM_DOMAIN` = `shop.connectwithbayezid.it.com`.
+
+## 6. Using `shop.sayadbayezid.com` (domain registered at Hostinger) — optional
 
 ### What is and isn't possible
 
@@ -121,7 +141,7 @@ Go to **github.com/bayeziddev/shop.sayadbayezid.com → Settings → Secrets and
    2. Go to **hPanel → Domains → sayadbayezid.com → DNS / Nameservers → Change nameservers → Use custom nameservers**.
    3. Enter the **two nameservers Cloudflare shows you** (like `xxx.ns.cloudflare.com`) and save.
 5. Wait until Cloudflare shows **“Active”** for the domain. Usually minutes; at most 24 hours. Cloudflare emails you.
-6. **GitHub → Settings → Variables → New variable:** `CUSTOM_DOMAIN` = `shop.sayadbayezid.com`. Then **Actions → Deploy to Cloudflare Workers → Run workflow**.
+6. **GitHub → Settings → Variables:** set `CUSTOM_DOMAIN` = `shop.sayadbayezid.com` (or add it after the other domains, separated by commas). Then **Actions → Deploy to Cloudflare Workers → Run workflow**.
    - Cloudflare creates the DNS record and SSL certificate automatically.
    - Payment callbacks, emails and the canonical URL switch to `https://shop.sayadbayezid.com`.
    - The `workers.dev` link keeps working as a backup.
@@ -155,6 +175,9 @@ npx wrangler secret put ADMIN_SETUP_TOKEN --config worker/wrangler.deploy.toml
 | `Deploy skipped — add the CLOUDFLARE_API_TOKEN` | Step 3 |
 | `no workers.dev subdomain yet` | Open Workers & Pages once (step 1), or set `WORKERS_DEV_SUBDOMAIN` |
 | `D1 list failed … D1: Edit` | Edit the API token and add **Account → D1 → Edit** |
+| `maximum number of D1 databases` / `7406: System limit reached: databases per account (10)` | The free plan allows 10 D1 databases and the account already has 10; the log lists them. **Either** delete unused ones (**Storage & databases → D1 → database → Settings → Delete**) and re-run, **or** set the variable `D1_DATABASE_NAME` to an existing database with *tables: 0* |
+| `… is not a domain in the Cloudflare account "…"` | The domain lives in a different Cloudflare account than the API token. Create the token in the account that has the domain (and update `CLOUDFLARE_ACCOUNT_ID`). |
+| `… is currently attached to another Worker` | Remove it from the old Worker, or set `CUSTOM_DOMAIN_TAKEOVER = true` |
 | `R2 is not enabled` (warning) | Dashboard → R2 → enable, then re-run. The site works meanwhile. |
-| Custom-domain error during deploy | The domain is not *Active* on Cloudflare yet, or a `shop` DNS record already exists (step 5.3) |
+| Custom-domain error during deploy | The domain is not *Active* on Cloudflare yet, or an old DNS record already exists for that hostname (step 5.2 / 6.3) |
 | `/healthz did not return 200` | Open Cloudflare → Workers & Pages → cwb-agency → **Logs** |

@@ -595,7 +595,9 @@ npm test && npm run test:e2e
 
 **Branches.** Feature branches lead to PRs (`ci.yml`: build, typecheck, unit/integration, E2E). Merging to `main` runs `deploy.yml`.
 
-**Custom domain (`shop.sayadbayezid.com`, registrar Hostinger).**
+**Recommended custom domain: `connectwithbayezid.it.com`.** It is already an active Cloudflare zone and matches the brand (Connect With Bayezid = Cwb). Set the GitHub variable `CUSTOM_DOMAIN=connectwithbayezid.it.com,www.connectwithbayezid.it.com`; `www` redirects to the bare domain. The setup script verifies that the zone is active in the same account and that no other Worker owns the hostname.
+
+**Optional: `shop.sayadbayezid.com` (registrar Hostinger).**
 - A Worker custom domain requires the domain to be an **active Cloudflare zone**. A CNAME from Hostinger to `workers.dev` does not work, and subdomain-only or partial setups need a paid Business plan.
 - Free path: move only the **nameservers** of `sayadbayezid.com` to Cloudflare. Hostinger stays the registrar and keeps hosting the main site and email; all records are imported.
 - Then set the GitHub variable `CUSTOM_DOMAIN=shop.sayadbayezid.com` and re-run the deploy. Cloudflare creates the DNS record and certificate, and `SITE_URL` switches to the custom domain. The workers.dev URL keeps working.

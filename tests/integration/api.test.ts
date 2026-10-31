@@ -195,3 +195,11 @@ describe('tracking & landing pages', () => {
     expect((await SELF.fetch(BASE + '/lp/eid-2026')).status).toBe(404);
   });
 });
+
+describe('canonical host', () => {
+  it('redirects www.<site> to the bare site host', async () => {
+    const r = await SELF.fetch('http://www.localhost:8787/faq?x=1', { redirect: 'manual' });
+    expect(r.status).toBe(301);
+    expect(r.headers.get('location')).toBe('http://localhost:8787/faq?x=1');
+  });
+});

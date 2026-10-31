@@ -5,99 +5,164 @@
  * Idempotent — safe to run on every deploy:
  *   1. finds (or registers) the account's workers.dev subdomain
  *   2. finds or creates the D1 database, KV namespace and R2 bucket
- *   3. writes worker/wrangler.deploy.toml with the real ids (git-ignored)
- *   4. prints the live URLs (and writes them to $GITHUB_OUTPUT / $GITHUB_STEP_SUMMARY)
+ *   3. checks custom domains (zone exists + active in THIS account, hostname not owned by another Worker)
+ *   4. writes worker/wrangler.deploy.toml with the real ids (git-ignored)
+ *   5. prints the live URLs (and writes them to $GITHUB_OUTPUT)
  *
  * Env:
- *   CLOUDFLARE_API_TOKEN   (required)  token from the "Edit Cloudflare Workers" template + "D1: Edit"
- *   CLOUDFLARE_ACCOUNT_ID  (optional)  auto-detected when the token can see exactly one account
- *   WORKER_NAME            (optional)  default "cwb-agency"  → https://cwb-agency.<subdomain>.workers.dev
- *   CUSTOM_DOMAIN          (optional)  e.g. "shop.sayadbayezid.com" — only once the domain's DNS is on Cloudflare
- *   WORKERS_DEV_SUBDOMAIN  (optional)  used only if the account has no workers.dev subdomain yet
- *   PAYMENT_MODE           (optional)  "sandbox" (default) | "live"
- *   ENABLE_BROWSER_RENDERING (optional) "true" to add the Browser Rendering binding (real PDF invoices)
- *   META_PIXEL_ID          (optional)  default 1469319801771203
- *   APP_ENV                (optional)  "production" (default) | "staging" — staging never loads tracking
+ *   CLOUDFLARE_API_TOKEN     (required)  token from the "Edit Cloudflare Workers" template + "D1: Edit"
+ *   CLOUDFLARE_ACCOUNT_ID    (optional)  auto-detected when the token can see exactly one account
+ *   WORKER_NAME              (optional)  default "cwb-agency"  → https://cwb-agency.<subdomain>.workers.dev
+ *   D1_DATABASE_NAME         (optional)  default "<WORKER_NAME>-db"; set to reuse an EMPTY existing database
+ *   CUSTOM_DOMAIN            (optional)  one or more hostnames, comma-separated, e.g.
+ *                                        "connectwithbayezid.it.com,www.connectwithbayezid.it.com" (first = main URL)
+ *   CUSTOM_DOMAIN_TAKEOVER   (optional)  "true" = detach the hostname from another Worker that currently owns it
+ *   WORKERS_DEV_SUBDOMAIN    (optional)  used only if the account has no workers.dev subdomain yet
+ *   PAYMENT_MODE             (optional)  "sandbox" (default) | "live"
+ *   ENABLE_BROWSER_RENDERING (optional)  "true" to add the Browser Rendering binding (real PDF invoices)
+ *   META_PIXEL_ID            (optional)  default 1469319801771203
+ *   APP_ENV                  (optional)  "production" (default) | "staging" — staging never loads tracking
  *
  * Flags: --dry-run  (no API calls; fake ids — used by tests to validate the generated config)
  */
 import { writeFileSync, appendFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-const DRY = process.argv.includes('--dry-run');
 const API = 'https://api.cloudflare.com/client/v4';
-const token = process.env.CLOUDFLARE_API_TOKEN;
-const name = (process.env.WORKER_NAME || 'cwb-agency').trim();
-const customDomain = (process.env.CUSTOM_DOMAIN || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-const paymentMode = process.env.PAYMENT_MODE === 'live' ? 'live' : 'sandbox';
-const browser = process.env.ENABLE_BROWSER_RENDERING === 'true';
-const pixel = (process.env.META_PIXEL_ID ?? '1469319801771203').trim();
-// Anything other than production (e.g. a staging Worker) loads no tracking tags and sends no CAPI events.
-const appEnv = ['production', 'staging'].includes(process.env.APP_ENV || '') ? process.env.APP_ENV : 'production';
+const toml = (v) => JSON.stringify(v); // JSON strings are valid TOML basic strings
 
-if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(name)) throw new Error(`WORKER_NAME "${name}" must be lowercase letters, digits and dashes`);
-if (customDomain && !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(customDomain)) throw new Error(`CUSTOM_DOMAIN "${customDomain}" is not a hostname`);
-if (!DRY && !token) throw new Error('CLOUDFLARE_API_TOKEN is not set');
+export class SetupError extends Error {}
 
-async function cf(method, path, body) {
-  const res = await fetch(API + path, {
-    method,
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const json = await res.json().catch(() => ({ success: false, errors: [{ code: res.status, message: res.statusText }] }));
-  return { ok: res.ok && json.success !== false, status: res.status, result: json.result, errors: json.errors || [] };
+export function readOptions(env) {
+  const name = (env.WORKER_NAME || 'cwb-agency').trim();
+  const domains = (env.CUSTOM_DOMAIN || '')
+    .split(',')
+    .map((d) => d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
+    .filter(Boolean);
+  if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(name)) throw new SetupError(`WORKER_NAME "${name}" must be lowercase letters, digits and dashes`);
+  for (const d of domains) if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)) throw new SetupError(`CUSTOM_DOMAIN "${d}" is not a hostname`);
+  return {
+    name,
+    dbName: (env.D1_DATABASE_NAME || `${name}-db`).trim(),
+    domains,
+    takeover: env.CUSTOM_DOMAIN_TAKEOVER === 'true',
+    wantedSubdomain: (env.WORKERS_DEV_SUBDOMAIN || '').trim().toLowerCase(),
+    paymentMode: env.PAYMENT_MODE === 'live' ? 'live' : 'sandbox',
+    browser: env.ENABLE_BROWSER_RENDERING === 'true',
+    pixel: (env.META_PIXEL_ID ?? '1469319801771203').trim(),
+    appEnv: env.APP_ENV === 'staging' ? 'staging' : 'production',
+  };
+}
+
+function client(token, fetchImpl) {
+  return async function cf(method, path, body) {
+    const res = await fetchImpl(API + path, {
+      method,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const json = await res.json().catch(() => ({ success: false, errors: [{ code: res.status, message: res.statusText }] }));
+    return { ok: res.ok && json.success !== false, status: res.status, result: json.result, errors: json.errors || [] };
+  };
 }
 const errText = (r) => r.errors.map((e) => `${e.code}: ${e.message}`).join('; ') || `HTTP ${r.status}`;
+const hasCode = (r, code) => r.errors.some((e) => Number(e.code) === code);
 
-async function accountId() {
-  if (process.env.CLOUDFLARE_ACCOUNT_ID) return process.env.CLOUDFLARE_ACCOUNT_ID.trim();
+async function resolveAccount(cf, env) {
+  if (env.CLOUDFLARE_ACCOUNT_ID) {
+    const id = env.CLOUDFLARE_ACCOUNT_ID.trim();
+    const r = await cf('GET', `/accounts/${id}`);
+    return { id, name: r.ok ? r.result?.name || id : id };
+  }
   const r = await cf('GET', '/accounts?per_page=50');
-  if (!r.ok) throw new Error(`Cannot list accounts (${errText(r)}). Set the CLOUDFLARE_ACCOUNT_ID secret.`);
-  if (r.result.length !== 1) throw new Error(`Token can see ${r.result.length} accounts — set the CLOUDFLARE_ACCOUNT_ID secret.`);
-  return r.result[0].id;
+  if (!r.ok) throw new SetupError(`Cannot list accounts (${errText(r)}). Set the CLOUDFLARE_ACCOUNT_ID secret.`);
+  if (r.result.length !== 1) throw new SetupError(`Token can see ${r.result.length} accounts — set the CLOUDFLARE_ACCOUNT_ID secret.`);
+  return { id: r.result[0].id, name: r.result[0].name };
 }
 
-async function workersSubdomain(acct) {
+async function workersSubdomain(cf, acct, wanted, log) {
   const r = await cf('GET', `/accounts/${acct}/workers/subdomain`);
   if (r.ok && r.result?.subdomain) return r.result.subdomain;
-  const wanted = (process.env.WORKERS_DEV_SUBDOMAIN || '').trim().toLowerCase();
   if (!wanted) {
-    throw new Error(
+    throw new SetupError(
       'This Cloudflare account has no workers.dev subdomain yet. Either open Cloudflare dashboard → Workers & Pages once ' +
         '(it asks you to pick one), or set the GitHub variable WORKERS_DEV_SUBDOMAIN (e.g. "cwbagency") and re-run.',
     );
   }
   const c = await cf('PUT', `/accounts/${acct}/workers/subdomain`, { subdomain: wanted });
-  if (!c.ok) throw new Error(`Could not register workers.dev subdomain "${wanted}": ${errText(c)}`);
-  console.log(`✓ registered workers.dev subdomain: ${wanted}`);
+  if (!c.ok) throw new SetupError(`Could not register workers.dev subdomain "${wanted}": ${errText(c)}`);
+  log(`✓ registered workers.dev subdomain: ${wanted}`);
   return wanted;
 }
 
-async function ensureD1(acct, dbName) {
-  const l = await cf('GET', `/accounts/${acct}/d1/database?name=${encodeURIComponent(dbName)}&per_page=100`);
-  if (!l.ok) throw new Error(`D1 list failed (${errText(l)}). Does the API token include "D1: Edit"?`);
-  const found = l.result.find((d) => d.name === dbName);
-  if (found) return { id: found.uuid, created: false };
-  const c = await cf('POST', `/accounts/${acct}/d1/database`, { name: dbName });
-  if (!c.ok) throw new Error(`D1 create failed: ${errText(c)}`);
-  return { id: c.result.uuid, created: true };
+async function listAllD1(cf, acct) {
+  const all = [];
+  for (let page = 1; page < 20; page++) {
+    const l = await cf('GET', `/accounts/${acct}/d1/database?per_page=100&page=${page}`);
+    if (!l.ok) break;
+    all.push(...l.result);
+    if (l.result.length < 100) break;
+  }
+  return all;
 }
 
-async function ensureKV(acct, title) {
+/** Refuse to mix this app's tables into a database that belongs to another project. */
+async function assertCompatibleD1(cf, acct, db) {
+  const q = await cf('POST', `/accounts/${acct}/d1/database/${db.uuid}/query`, {
+    sql: "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'",
+  });
+  if (!q.ok) return; // cannot inspect — let migrations decide
+  const tables = (q.result?.[0]?.results || []).map((r) => r.name);
+  const ours = tables.includes('orders') && tables.includes('packages');
+  if (tables.length && !ours) {
+    throw new SetupError(
+      `The database "${db.name}" already contains tables from another project (${tables.slice(0, 8).join(', ')}${tables.length > 8 ? ', …' : ''}). ` +
+        'Using it would mix data. Pick an EMPTY database for D1_DATABASE_NAME, or delete an unused database and remove the D1_DATABASE_NAME variable.',
+    );
+  }
+}
+
+async function ensureD1(cf, acct, dbName) {
+  const l = await cf('GET', `/accounts/${acct}/d1/database?name=${encodeURIComponent(dbName)}&per_page=100`);
+  if (!l.ok) throw new SetupError(`D1 list failed (${errText(l)}). Does the API token include "Account → D1 → Edit"?`);
+  const found = l.result.find((d) => d.name === dbName);
+  if (found) {
+    await assertCompatibleD1(cf, acct, found);
+    return { id: found.uuid, created: false };
+  }
+  const c = await cf('POST', `/accounts/${acct}/d1/database`, { name: dbName });
+  if (c.ok) return { id: c.result.uuid, created: true };
+  if (hasCode(c, 7406) || /limit/i.test(errText(c))) {
+    const all = await listAllD1(cf, acct);
+    const rows = all
+      .map((d) => `   • ${d.name}  (tables: ${d.num_tables ?? '?'}, size: ${Math.round((d.file_size || 0) / 1024)} KB, created: ${(d.created_at || '').slice(0, 10)})`)
+      .join('\n');
+    throw new SetupError(
+      `Your Cloudflare account already has the maximum number of D1 databases (${all.length}) on its plan, so "${dbName}" could not be created.\n` +
+        `Existing databases:\n${rows}\n` +
+        'Fix (pick one):\n' +
+        '  A) Delete a database you no longer use: Cloudflare dashboard → Storage & databases → D1 → (database) → Settings → Delete. Then re-run this workflow.\n' +
+        '  B) Reuse an EMPTY database (tables: 0): add the GitHub variable D1_DATABASE_NAME = <its name>, then re-run.',
+    );
+  }
+  throw new SetupError(`D1 create failed: ${errText(c)}`);
+}
+
+async function ensureKV(cf, acct, title) {
   for (let page = 1; page < 20; page++) {
     const l = await cf('GET', `/accounts/${acct}/storage/kv/namespaces?per_page=100&page=${page}`);
-    if (!l.ok) throw new Error(`KV list failed (${errText(l)}). Does the API token include "Workers KV Storage: Edit"?`);
+    if (!l.ok) throw new SetupError(`KV list failed (${errText(l)}). Does the API token include "Workers KV Storage: Edit"?`);
     const found = l.result.find((n) => n.title === title);
     if (found) return { id: found.id, created: false };
     if (l.result.length < 100) break;
   }
   const c = await cf('POST', `/accounts/${acct}/storage/kv/namespaces`, { title });
-  if (!c.ok) throw new Error(`KV create failed: ${errText(c)}`);
+  if (!c.ok) throw new SetupError(`KV create failed: ${errText(c)}`);
   return { id: c.result.id, created: true };
 }
 
 /** R2 needs a one-time activation in the dashboard; without it we deploy without file uploads. */
-async function ensureR2(acct, bucket) {
+async function ensureR2(cf, acct, bucket) {
   const g = await cf('GET', `/accounts/${acct}/r2/buckets/${bucket}`);
   if (g.ok) return { ok: true, created: false };
   const c = await cf('POST', `/accounts/${acct}/r2/buckets`, { name: bucket });
@@ -105,24 +170,62 @@ async function ensureR2(acct, bucket) {
   return { ok: false, reason: errText(c) };
 }
 
-const toml = (v) => JSON.stringify(v); // JSON strings are valid TOML basic strings
+/** Find the zone that contains `host` in this account (handles multi-label suffixes like it.com, co.uk). */
+async function findZone(cf, acctId, host) {
+  const labels = host.split('.');
+  for (let i = 0; i <= labels.length - 2; i++) {
+    const candidate = labels.slice(i).join('.');
+    const r = await cf('GET', `/zones?name=${encodeURIComponent(candidate)}&account.id=${acctId}`);
+    if (!r.ok) return { unknown: true, reason: errText(r) };
+    if (r.result?.length) return { zone: r.result[0] };
+  }
+  return { zone: null };
+}
 
-const acct = DRY ? '00000000000000000000000000000000' : await accountId();
-const sub = DRY ? 'example' : await workersSubdomain(acct);
-const d1 = DRY ? { id: '11111111-1111-1111-1111-111111111111', created: false } : await ensureD1(acct, `${name}-db`);
-const kv = DRY ? { id: '22222222222222222222222222222222', created: false } : await ensureKV(acct, `${name}-kv`);
-const r2 = DRY ? { ok: true } : await ensureR2(acct, `${name}-media`);
+async function checkCustomDomains(cf, acct, opts, log, warn) {
+  for (const host of opts.domains) {
+    const z = await findZone(cf, acct.id, host);
+    if (z.unknown) {
+      warn(`Could not verify the zone for ${host} (${z.reason}). Continuing — wrangler will report any problem.`);
+      continue;
+    }
+    if (!z.zone) {
+      throw new SetupError(
+        `"${host}" is not a domain in the Cloudflare account "${acct.name}". Custom domains only work for domains added to the SAME account as the API token. ` +
+          'Either add the domain to this account, or create the API token (and CLOUDFLARE_ACCOUNT_ID) from the account that has the domain.',
+      );
+    }
+    if (z.zone.status !== 'active') {
+      throw new SetupError(`The domain ${z.zone.name} is "${z.zone.status}" on Cloudflare — it must be "active" (nameservers pointed to Cloudflare) before ${host} can be used.`);
+    }
+    const d = await cf('GET', `/accounts/${acct.id}/workers/domains?hostname=${encodeURIComponent(host)}`);
+    const owner = d.ok ? (d.result || []).find((x) => x.hostname === host && x.service !== opts.name) : null;
+    if (owner) {
+      if (!opts.takeover) {
+        throw new SetupError(
+          `${host} is currently attached to another Worker ("${owner.service}"). Remove it there (Workers & Pages → ${owner.service} → Settings → Domains & Routes), ` +
+            'or set the GitHub variable CUSTOM_DOMAIN_TAKEOVER = true to move it to this Worker automatically.',
+        );
+      }
+      const del = await cf('DELETE', `/accounts/${acct.id}/workers/domains/${owner.id}`);
+      if (!del.ok) throw new SetupError(`Could not detach ${host} from "${owner.service}": ${errText(del)}`);
+      log(`✓ detached ${host} from old Worker "${owner.service}"`);
+    }
+    log(`✓ custom domain ${host} → zone ${z.zone.name} (active)`);
+  }
+}
 
-const workersDevUrl = `https://${name}.${sub}.workers.dev`;
-const siteUrl = customDomain ? `https://${customDomain}` : workersDevUrl;
-
-const config = `# GENERATED by scripts/cf-setup.mjs — do not edit or commit (git-ignored).
-name = ${toml(name)}
+export function renderConfig(opts, ids) {
+  const routes = opts.domains.length
+    ? `routes = [\n${opts.domains.map((d) => `  { pattern = ${toml(d)}, custom_domain = true },`).join('\n')}\n]`
+    : '# no custom domain yet — set the CUSTOM_DOMAIN GitHub variable (domain must be active in this Cloudflare account)';
+  return `# GENERATED by scripts/cf-setup.mjs — do not edit or commit (git-ignored).
+name = ${toml(opts.name)}
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
-${customDomain ? `routes = [{ pattern = ${toml(customDomain)}, custom_domain = true }]` : '# no custom domain yet — set the CUSTOM_DOMAIN GitHub variable once DNS is on Cloudflare'}
+${routes}
 
 [assets]
 directory = "../dist"
@@ -131,55 +234,90 @@ html_handling = "auto-trailing-slash"
 not_found_handling = "none"
 
 [vars]
-SITE_URL = ${toml(siteUrl)}
-APP_ENV = ${toml(appEnv)}
-PAYMENT_MODE = ${toml(paymentMode)}
-META_PIXEL_ID = ${toml(pixel)}
+SITE_URL = ${toml(ids.siteUrl)}
+APP_ENV = ${toml(opts.appEnv)}
+PAYMENT_MODE = ${toml(opts.paymentMode)}
+META_PIXEL_ID = ${toml(opts.pixel)}
 META_GRAPH_VERSION = "v21.0"
 
 [[d1_databases]]
 binding = "DB"
-database_name = ${toml(`${name}-db`)}
-database_id = ${toml(d1.id)}
+database_name = ${toml(opts.dbName)}
+database_id = ${toml(ids.d1)}
 migrations_dir = "migrations"
 
 [[kv_namespaces]]
 binding = "KV"
-id = ${toml(kv.id)}
-${r2.ok ? `
+id = ${toml(ids.kv)}
+${ids.r2.ok ? `
 [[r2_buckets]]
 binding = "MEDIA"
-bucket_name = ${toml(`${name}-media`)}
+bucket_name = ${toml(`${opts.name}-media`)}
 ` : `
-# R2 not available (${r2.reason}) — enable R2 in the dashboard and re-run to turn on uploads.
+# R2 not available (${ids.r2.reason}) — enable R2 in the dashboard and re-run to turn on uploads.
 `}
 [ai]
 binding = "AI"
-${browser ? '\n[browser]\nbinding = "BROWSER"\n' : ''}
+${opts.browser ? '\n[browser]\nbinding = "BROWSER"\n' : ''}
 [triggers]
 crons = ["17 * * * *"]
 
 [observability]
 enabled = true
 `;
-
-writeFileSync(new URL('../worker/wrangler.deploy.toml', import.meta.url), config);
-
-const lines = [
-  `Worker:            ${name}`,
-  `workers.dev URL:   ${workersDevUrl}`,
-  `Custom domain:     ${customDomain ? `https://${customDomain}` : '(not set yet)'}`,
-  `SITE_URL:          ${siteUrl}`,
-  `D1:                ${name}-db ${d1.created ? '(created)' : '(existing)'}`,
-  `KV:                ${name}-kv ${kv.created ? '(created)' : '(existing)'}`,
-  `R2:                ${r2.ok ? `${name}-media ${r2.created ? '(created)' : '(existing)'}` : `disabled — ${r2.reason}`}`,
-  `Payment mode:      ${paymentMode}`,
-];
-console.log(lines.join('\n'));
-
-if (process.env.GITHUB_OUTPUT) {
-  appendFileSync(process.env.GITHUB_OUTPUT, [
-    `site_url=${siteUrl}`, `workers_dev_url=${workersDevUrl}`, `custom_domain=${customDomain}`, `r2=${r2.ok}`, `worker_name=${name}`,
-  ].join('\n') + '\n');
 }
-if (!r2.ok) console.log(`::warning::R2 is not enabled on this Cloudflare account (${r2.reason}). The site is deployed, but image/file uploads are off until you enable R2 (Dashboard → R2 → Get started) and re-run the deploy.`);
+
+/** Main entry. Returns the summary; throws SetupError with a human-readable fix. */
+export async function run(env, { fetchImpl = fetch, dry = false, log = console.log, warn = (m) => console.log(`::warning::${m}`) } = {}) {
+  const opts = readOptions(env);
+  if (!dry && !env.CLOUDFLARE_API_TOKEN) throw new SetupError('CLOUDFLARE_API_TOKEN is not set');
+  const cf = client(env.CLOUDFLARE_API_TOKEN, fetchImpl);
+
+  const acct = dry ? { id: '0'.repeat(32), name: 'dry-run' } : await resolveAccount(cf, env);
+  log(`Cloudflare account: ${acct.name}`);
+  const sub = dry ? 'example' : await workersSubdomain(cf, acct.id, opts.wantedSubdomain, log);
+  const d1 = dry ? { id: '11111111-1111-1111-1111-111111111111', created: false } : await ensureD1(cf, acct.id, opts.dbName);
+  const kv = dry ? { id: '2'.repeat(32), created: false } : await ensureKV(cf, acct.id, `${opts.name}-kv`);
+  const r2 = dry ? { ok: true } : await ensureR2(cf, acct.id, `${opts.name}-media`);
+  if (!dry && opts.domains.length) await checkCustomDomains(cf, acct, opts, log, warn);
+
+  const workersDevUrl = `https://${opts.name}.${sub}.workers.dev`;
+  const siteUrl = opts.domains.length ? `https://${opts.domains[0]}` : workersDevUrl;
+  const config = renderConfig(opts, { siteUrl, d1: d1.id, kv: kv.id, r2 });
+
+  log([
+    `Worker:            ${opts.name}`,
+    `workers.dev URL:   ${workersDevUrl}`,
+    `Custom domain(s):  ${opts.domains.length ? opts.domains.map((d) => `https://${d}`).join(', ') : '(not set yet)'}`,
+    `SITE_URL:          ${siteUrl}`,
+    `D1:                ${opts.dbName} ${d1.created ? '(created)' : '(existing)'}`,
+    `KV:                ${opts.name}-kv ${kv.created ? '(created)' : '(existing)'}`,
+    `R2:                ${r2.ok ? `${opts.name}-media ${r2.created ? '(created)' : '(existing)'}` : `disabled — ${r2.reason}`}`,
+    `Payment mode:      ${opts.paymentMode}`,
+  ].join('\n'));
+  if (!r2.ok) warn(`R2 is not enabled on this Cloudflare account (${r2.reason}). The site is deployed, but image/file uploads are off until you enable R2 (Dashboard → R2 → Get started) and re-run the deploy.`);
+
+  return { config, siteUrl, workersDevUrl, domains: opts.domains, r2: r2.ok, name: opts.name, account: acct.name };
+}
+
+// CLI
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  try {
+    const out = await run(process.env, { dry: process.argv.includes('--dry-run') });
+    writeFileSync(new URL('../worker/wrangler.deploy.toml', import.meta.url), out.config);
+    if (process.env.GITHUB_OUTPUT) {
+      appendFileSync(process.env.GITHUB_OUTPUT, [
+        `site_url=${out.siteUrl}`, `workers_dev_url=${out.workersDevUrl}`, `custom_domain=${out.domains.join(', ')}`,
+        `r2=${out.r2}`, `worker_name=${out.name}`, `account=${out.account}`,
+      ].join('\n') + '\n');
+    }
+  } catch (e) {
+    if (e instanceof SetupError) {
+      for (const line of e.message.split('\n')) console.log(line);
+      console.log(`::error title=Cloudflare setup::${e.message.split('\n')[0]}`);
+      if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### ❌ Cloudflare setup needs your action\n\n\`\`\`\n${e.message}\n\`\`\`\n`);
+      process.exit(1);
+    }
+    throw e;
+  }
+}

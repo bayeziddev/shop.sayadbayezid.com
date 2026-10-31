@@ -32,6 +32,9 @@ app.use('*', async (c, next) => {
   const url = new URL(c.req.url);
   // Canonical host + HTTPS
   if (c.env.APP_ENV === 'production' && url.protocol === 'http:') return c.redirect(url.toString().replace('http:', 'https:'), 301);
+  // www.<domain> → <domain> (one canonical host for SEO and cookies) when SITE_URL is the bare domain.
+  const site = new URL(c.env.SITE_URL);
+  if (url.hostname === `www.${site.hostname}`) return c.redirect(`${site.origin}${url.pathname}${url.search}`, 301);
   await next();
   const h = c.res.headers;
   h.set('strict-transport-security', 'max-age=63072000; includeSubDomains; preload');
