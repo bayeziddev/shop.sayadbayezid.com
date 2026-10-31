@@ -175,7 +175,7 @@ npx wrangler secret put ADMIN_SETUP_TOKEN --config worker/wrangler.deploy.toml
 | `Deploy skipped — add the CLOUDFLARE_API_TOKEN` | Step 3 |
 | `no workers.dev subdomain yet` | Open Workers & Pages once (step 1), or set `WORKERS_DEV_SUBDOMAIN` |
 | `D1 list failed … D1: Edit` | Edit the API token and add **Account → D1 → Edit** |
-| `maximum number of D1 databases` / `7406: System limit reached: databases per account (10)` | The free plan allows 10 D1 databases and the account already has 10; the log lists them. **Either** delete unused ones (**Storage & databases → D1 → database → Settings → Delete**) and re-run, **or** set the variable `D1_DATABASE_NAME` to an existing database with *tables: 0* |
+| `maximum number of D1 databases` / `7406: System limit reached: databases per account (10)` | The free plan allows 10 D1 databases and the account already has 10; the log lists them. **Either** delete unused ones (**Storage & databases → D1 → database → Settings → Delete**) and re-run, **or** set the variable `D1_DATABASE_NAME` to a database the log marks **EMPTY — can be reused** |
 | `… is not a domain in the Cloudflare account "…"` | The domain lives in a different Cloudflare account than the API token. Create the token in the account that has the domain (and update `CLOUDFLARE_ACCOUNT_ID`). |
 | `… is currently attached to another Worker` | Remove it from the old Worker, or set `CUSTOM_DOMAIN_TAKEOVER = true` |
 | `R2 is not enabled` (warning) | Dashboard → R2 → enable, then re-run. The site works meanwhile. |
