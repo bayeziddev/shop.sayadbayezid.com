@@ -17,12 +17,17 @@ export function toast(msg, isError = false) {
   setTimeout(() => t.remove(), 4000);
 }
 
+/** Backend origin. Empty = same origin. Set by <meta name="sb-api-base"> when the pages are hosted on GitHub Pages. */
+export const API_BASE = (document.querySelector('meta[name="sb-api-base"]')?.content || '').replace(/\/$/, '');
+/** Absolute URL on the backend for API calls and backend-only pages (order, portal, invoice). */
+export const backend = (path) => (API_BASE && path.startsWith('/') ? API_BASE + path : path);
+
 export async function api(path, { method = 'GET', body, headers = {} } = {}) {
   const opts = { method, headers: { ...headers } };
   if (body !== undefined && !(body instanceof FormData)) { opts.headers['content-type'] = 'application/json'; opts.body = JSON.stringify(body); }
   else if (body) opts.body = body;
   let res;
-  try { res = await fetch(path, opts); } catch { throw Object.assign(new Error('ইন্টারনেট সংযোগ পরীক্ষা করে আবার চেষ্টা করুন'), { code: 'network' }); }
+  try { res = await fetch(backend(path), opts); } catch { throw Object.assign(new Error('ইন্টারনেট সংযোগ পরীক্ষা করে আবার চেষ্টা করুন'), { code: 'network' }); }
   const json = await res.json().catch(() => ({}));
   if (!res.ok || json.ok === false) throw Object.assign(new Error(json.error || 'কিছু একটা সমস্যা হয়েছে'), { code: json.code, status: res.status, data: json.data });
   return json.data;

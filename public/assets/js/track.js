@@ -10,6 +10,8 @@
   var cfg = {};
   try { cfg = JSON.parse(el ? el.textContent : '{}') || {}; } catch (e) {}
   var w = window;
+  var apiMeta = document.querySelector('meta[name="sb-api-base"]');
+  var API = apiMeta ? apiMeta.content.replace(/\/$/, '') : '';
 
   function cookie(n) { var m = document.cookie.match(new RegExp('(?:^|; )' + n + '=([^;]*)')); return m ? decodeURIComponent(m[1]) : ''; }
   function rid(prefix) { var a = new Uint8Array(12); crypto.getRandomValues(a); return prefix + '_' + Array.from(a, function (b) { return b.toString(16).padStart(2, '0'); }).join(''); }
@@ -38,7 +40,7 @@
   function beacon(event, eventId, customData) {
     if (!cfg.pixelId) return;
     var body = JSON.stringify({ event: event, eventId: eventId, url: location.href, customData: customData || {}, fbp: cookie('_fbp'), fbc: cookie('_fbc') });
-    try { fetch('/api/track', { method: 'POST', headers: { 'content-type': 'application/json' }, body: body, keepalive: true }); } catch (e) {}
+    try { fetch(API + '/api/track', { method: 'POST', headers: { 'content-type': 'application/json' }, body: body, keepalive: true }); } catch (e) {}
   }
 
   var GA_MAP = { Lead: 'generate_lead', InitiateCheckout: 'begin_checkout', Purchase: 'purchase', ViewContent: 'view_item' };
@@ -59,7 +61,9 @@
   if (w.fbq) w.fbq('track', 'PageView', {}, { eventID: pv });
   beacon('PageView', pv);
 
-  if (cfg.pageEvent && cfg.pageEvent.eventId) {
+  if (cfg.pageEvent) {
+    // Always a fresh id per page view: a static copy of the page must not reuse one baked-in id.
+    cfg.pageEvent.eventId = rid('vc');
     if (w.fbq) w.fbq('track', cfg.pageEvent.name, cfg.pageEvent.customData || {}, { eventID: cfg.pageEvent.eventId });
     if (w.gtag) w.gtag('event', 'view_item', { currency: 'BDT', value: cfg.pageEvent.customData && cfg.pageEvent.customData.value });
     beacon(cfg.pageEvent.name, cfg.pageEvent.eventId, cfg.pageEvent.customData);

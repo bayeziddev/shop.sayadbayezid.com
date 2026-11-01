@@ -1,0 +1,75 @@
+name: Publish storefront to GitHub Pages
+
+# Static copy of the public pages on GitHub Pages (e.g. shop.sayadbayezid.com — DNS can stay at Hostinger).
+# The Cloudflare Worker remains the backend: API, payments, admin, client portal, invoices, images.
+# Runs after every successful deploy, every hour (picks up admin edits: prices, offers, banners), or on demand.
+# Only active when the repository variable PAGES_DOMAIN is set.
+on:
+  workflow_run:
+    workflows: ["Deploy to Cloudflare Workers"]
+    types: [completed]
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    if: ${{ vars.PAGES_DOMAIN != '' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WORKER_NAME: ${{ vars.WORKER_NAME || 'cwb-agency' }}
+      PAGES_DOMAIN: ${{ vars.PAGES_DOMAIN }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - name: Find the Worker URL (backend)
+        id: worker
+        run: node scripts/cf-setup.mjs --url-only
+
+      - name: Export public pages from the Worker
+        env:
+          WORKER_URL: ${{ steps.worker.outputs.workers_dev_url }}
+        run: node scripts/export-static.mjs
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Summary
+        env:
+          WORKER_URL: ${{ steps.worker.outputs.workers_dev_url }}
+        run: |
+          {
+            echo "## 🌐 Storefront published"
+            echo ""
+            echo "| | URL |"
+            echo "|---|---|"
+            echo "| Storefront (GitHub Pages) | https://$PAGES_DOMAIN |"
+            echo "| Backend / API (Cloudflare Worker) | $WORKER_URL |"
+            echo "| Admin panel | $WORKER_URL/admin/ |"
+          } >> "$GITHUB_STEP_SUMMARY"

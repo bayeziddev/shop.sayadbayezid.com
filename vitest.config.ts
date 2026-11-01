@@ -17,6 +17,8 @@ export default defineConfig(async () => {
                   ADMIN_SETUP_TOKEN: 'test-setup-token',
                   SESSION_SECRET: 'test-session-secret-0123456789',
                   DATA_ENCRYPTION_KEY: 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=',
+                  // Storefront copy on GitHub Pages; this Worker is the backend (CORS + canonical URLs).
+                  PUBLIC_SITE_URL: 'https://shop.example.com',
                 },
               },
             }),

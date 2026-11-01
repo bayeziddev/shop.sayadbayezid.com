@@ -1,6 +1,7 @@
 import type { Env } from '../env';
 import { html, raw, jsonScript, esc, safeUrl, type Raw } from '../lib/html';
 import type { SiteSettings } from '../lib/settings';
+import { publicOrigin, isSplit } from '../lib/util';
 
 export interface BannerRow { id: number; kind: 'bar' | 'popup'; title: string; body: string; cta_label: string; cta_url: string; image_key: string | null; target: string }
 
@@ -45,7 +46,7 @@ export function layout(ctx: PageCtx, body: Raw): Response {
   const s = ctx.settings;
   const fullTitle = ctx.title ? `${ctx.title} | ${s.brand_name}` : `${s.brand_name} — ${s.brand_tagline}`;
   const desc = ctx.description || s.brand_tagline;
-  const canonical = `${ctx.env.SITE_URL}${ctx.path}`;
+  const canonical = `${publicOrigin(ctx.env)}${ctx.path}`;
   const bar = (ctx.banners || []).find((b) => b.kind === 'bar');
   const popup = (ctx.banners || []).find((b) => b.kind === 'popup');
   const page = html`<!doctype html>
@@ -63,6 +64,7 @@ ${ctx.noindex ? raw('<meta name="robots" content="noindex, nofollow">') : ''}
 <meta property="og:url" content="${canonical}">
 <meta property="og:locale" content="bn_BD">
 ${ctx.ogImage ? html`<meta property="og:image" content="${ctx.env.SITE_URL}${ctx.ogImage}">` : ''}
+${isSplit(ctx.env) ? html`<meta name="sb-api-base" content="${ctx.env.SITE_URL.replace(/\/$/, '')}">` : ''}
 <meta name="theme-color" content="#0b0a1f" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f6f6fb" media="(prefers-color-scheme: light)">
 <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
