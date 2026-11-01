@@ -82,6 +82,7 @@ jobs:
           D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
           CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
           CUSTOM_DOMAIN_TAKEOVER: ${{ vars.CUSTOM_DOMAIN_TAKEOVER }}
+          PAGES_DOMAIN: ${{ vars.PAGES_DOMAIN }}
           WORKERS_DEV_SUBDOMAIN: ${{ vars.WORKERS_DEV_SUBDOMAIN }}
           PAYMENT_MODE: ${{ vars.PAYMENT_MODE || 'sandbox' }}
           ENABLE_BROWSER_RENDERING: ${{ vars.ENABLE_BROWSER_RENDERING || 'false' }}
@@ -172,6 +173,7 @@ jobs:
           DEV: ${{ steps.setup.outputs.workers_dev_url }}
           DOMAIN: ${{ steps.setup.outputs.custom_domain }}
           R2: ${{ steps.setup.outputs.r2 }}
+          PAGES: ${{ vars.PAGES_DOMAIN }}
         run: |
           {
             echo "## 🚀 Cwb Agency is live"
@@ -180,7 +182,8 @@ jobs:
             echo "|---|---|"
             echo "| Website (workers.dev) | $DEV |"
             if [ -n "$DOMAIN" ]; then for d in $(echo "$DOMAIN" | tr ',' ' '); do echo "| Website (custom domain) | https://$d |"; done; else echo "| Custom domain | not set yet — see docs/DEPLOY.md step 5 |"; fi
-            echo "| Admin panel | $SITE/admin/ |"
+            echo "| Admin panel | $DEV/admin/ |"
+            if [ -n "$PAGES" ]; then echo "| Storefront (GitHub Pages, published by the next workflow) | https://$PAGES |"; fi
             echo "| Health check | $DEV/healthz |"
             echo ""
             if [ "$R2" != "true" ]; then echo "> ⚠️ R2 file storage is off — enable R2 in the Cloudflare dashboard and re-run to allow image/file uploads."; fi

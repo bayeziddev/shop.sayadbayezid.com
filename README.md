@@ -12,12 +12,12 @@ Built on **Cloudflare Workers (Hono + TypeScript), D1, KV and R2**, deployed by 
 
 | | URL |
 |---|---|
-| Website (Cloudflare Workers) | `https://cwb-agency.<your-workers-subdomain>.workers.dev`. The exact link is printed in every **Actions → Deploy to Cloudflare Workers** run summary and under **Environments → production**. |
-| Admin panel | `<website>/admin/` |
-| Custom domain (recommended, already on Cloudflare) | `https://connectwithbayezid.it.com`. Set the GitHub variable `CUSTOM_DOMAIN` (see [DEPLOY §5](docs/DEPLOY.md)). |
-| Optional second domain | `https://shop.sayadbayezid.com` once its DNS moves from Hostinger to Cloudflare |
+| **Storefront** (GitHub Pages, DNS at Hostinger) | `https://shop.sayadbayezid.com`. Set the variable `PAGES_DOMAIN`, see [DEPLOY §6](docs/DEPLOY.md). |
+| **Backend + full site** (Cloudflare Worker: API, payments, client portal) | `https://cwb-agency.<your-workers-subdomain>.workers.dev`. Printed in every **Deploy to Cloudflare Workers** run summary. |
+| Admin panel | `<backend>/admin/` |
+| Optional Cloudflare custom domain | `https://connectwithbayezid.it.com`. Set the variable `CUSTOM_DOMAIN`, see [DEPLOY §5](docs/DEPLOY.md). |
 
-**First deploy:** follow [`docs/DEPLOY.md`](docs/DEPLOY.md). Add two GitHub secrets, then push to `main`. The workflow creates the Worker, D1, KV and R2 automatically.
+**First deploy:** follow [`docs/DEPLOY.md`](docs/DEPLOY.md). Add the GitHub secrets, then push to `main`. The workflow creates the Worker, database, KV and R2 automatically. At the free-plan database limit it reuses an empty database.
 
 ## Quick start (local)
 

@@ -109,3 +109,8 @@ export function maskSecret(v: string | undefined): string {
   if (!v) return '';
   return '••••••••' + v.slice(-4);
 }
+
+/** Public storefront origin (GitHub Pages) if configured, else the Worker origin. */
+export const publicOrigin = (env: { SITE_URL: string; PUBLIC_SITE_URL?: string }) => (env.PUBLIC_SITE_URL || env.SITE_URL).replace(/\/$/, '');
+/** True when the storefront is served from GitHub Pages and the Worker is only the backend. */
+export const isSplit = (env: { SITE_URL: string; PUBLIC_SITE_URL?: string }) => !!env.PUBLIC_SITE_URL && publicOrigin(env) !== env.SITE_URL.replace(/\/$/, '');

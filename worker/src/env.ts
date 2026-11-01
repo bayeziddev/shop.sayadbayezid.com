@@ -10,7 +10,13 @@ export interface Env {
   BROWSER?: Fetcher;
 
   // vars
+  /** Origin of the Worker itself (payments, emails, portal, admin, API). */
   SITE_URL: string;
+  /**
+   * Optional public storefront origin when the static pages are hosted elsewhere (GitHub Pages),
+   * e.g. https://shop.sayadbayezid.com. Used for canonical URLs, sitemap and CORS.
+   */
+  PUBLIC_SITE_URL?: string;
   APP_ENV: 'production' | 'staging' | 'development' | 'test';
   /** 'live' | 'sandbox'. In sandbox NO Purchase event ever reaches the Meta pixel or CAPI. */
   PAYMENT_MODE: 'live' | 'sandbox';

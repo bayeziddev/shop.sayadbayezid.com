@@ -7,7 +7,8 @@ import { publicApi } from './routes/public-api';
 import { portal } from './routes/portal';
 import { admin } from './routes/admin';
 import { runScheduled } from './lib/cron';
-import { randomToken } from './lib/util';
+import { randomToken, publicOrigin, isSplit } from './lib/util';
+import { cors } from 'hono/cors';
 
 const app = new Hono<AppBindings>();
 
@@ -43,6 +44,8 @@ app.use('*', async (c, next) => {
   h.set('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=(self)');
   h.set('cross-origin-opener-policy', 'same-origin-allow-popups');
   if (!h.has('content-security-policy') && (h.get('content-type') || '').includes('text/html')) h.set('content-security-policy', CSP_SITE);
+  // When GitHub Pages serves the public copy, keep search engines on that domain only.
+  if (isSplit(c.env) && (h.get('content-type') || '').includes('text/html')) h.set('x-robots-tag', 'noindex');
   if (url.pathname.startsWith('/api/')) h.set('cache-control', h.get('cache-control') || 'no-store');
   return undefined;
 });
@@ -54,6 +57,20 @@ app.onError((err, c) => {
 });
 
 app.get('/healthz', (c) => c.json({ ok: true }));
+
+/**
+ * CORS: when the storefront is a static copy on GitHub Pages (PUBLIC_SITE_URL), its browser JS calls
+ * this Worker's public API. Only that origin is allowed, never for /api/admin (admin stays same-origin).
+ */
+app.use('/api/*', async (c, next) => {
+  if (c.req.path.startsWith('/api/admin') || !isSplit(c.env)) return next();
+  return cors({
+    origin: (o) => (o === publicOrigin(c.env) ? o : null),
+    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowHeaders: ['content-type', 'x-portal-token'],
+    maxAge: 86400,
+  })(c, next);
+});
 
 app.route('/api/admin', admin);
 app.route('/', publicApi);
@@ -82,7 +99,7 @@ app.get('/media/*', async (c) => {
   return new Response(obj.body, { headers });
 });
 
-app.get('/robots.txt', (c) => c.text(`User-agent: *\nDisallow: /admin\nDisallow: /api/\nDisallow: /portal/\nDisallow: /order/\nDisallow: /invoice/\nSitemap: ${c.env.SITE_URL}/sitemap.xml\n`));
+app.get('/robots.txt', (c) => c.text(`User-agent: *\nDisallow: /admin\nDisallow: /api/\nDisallow: /portal/\nDisallow: /order/\nDisallow: /invoice/\nSitemap: ${publicOrigin(c.env)}/sitemap.xml\n`));
 
 app.get('/sitemap.xml', async (c) => {
   const [cats, pkgs, lps] = await c.env.DB.batch([
@@ -90,7 +107,7 @@ app.get('/sitemap.xml', async (c) => {
     c.env.DB.prepare("SELECT slug, updated_at FROM packages WHERE status IN ('active','coming_soon')"),
     c.env.DB.prepare("SELECT slug, updated_at FROM landing_pages WHERE status = 'published'"),
   ]);
-  const u = (p: string, d?: string) => `<url><loc>${c.env.SITE_URL}${p}</loc>${d ? `<lastmod>${d.slice(0, 10)}</lastmod>` : ''}</url>`;
+  const u = (p: string, d?: string) => `<url><loc>${publicOrigin(c.env)}${p}</loc>${d ? `<lastmod>${d.slice(0, 10)}</lastmod>` : ''}</url>`;
   const list = [
     u('/'), u('/faq'), u('/about'), u('/contact'), u('/quiz'), u('/quote'), u('/refund-policy'), u('/terms'), u('/privacy'),
     ...(cats.results as { slug: string; updated_at: string }[]).map((r) => u(`/category/${r.slug}`, r.updated_at)),

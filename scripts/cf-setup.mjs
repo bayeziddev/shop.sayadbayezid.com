@@ -17,13 +17,16 @@
  *   CUSTOM_DOMAIN            (optional)  one or more hostnames, comma-separated, e.g.
  *                                        "connectwithbayezid.it.com,www.connectwithbayezid.it.com" (first = main URL)
  *   CUSTOM_DOMAIN_TAKEOVER   (optional)  "true" = detach the hostname from another Worker that currently owns it
+ *   PAGES_DOMAIN             (optional)  storefront copy on GitHub Pages, e.g. "shop.sayadbayezid.com"
+ *                                        (sets PUBLIC_SITE_URL for canonical URLs + CORS; see scripts/export-static.mjs)
  *   WORKERS_DEV_SUBDOMAIN    (optional)  used only if the account has no workers.dev subdomain yet
  *   PAYMENT_MODE             (optional)  "sandbox" (default) | "live"
  *   ENABLE_BROWSER_RENDERING (optional)  "true" to add the Browser Rendering binding (real PDF invoices)
  *   META_PIXEL_ID            (optional)  default 1469319801771203
  *   APP_ENV                  (optional)  "production" (default) | "staging" — staging never loads tracking
  *
- * Flags: --dry-run  (no API calls; fake ids — used by tests to validate the generated config)
+ * Flags: --dry-run   (no API calls; fake ids — used by tests to validate the generated config)
+ *        --url-only  (only look up the workers.dev URL; creates nothing — used by the GitHub Pages workflow)
  */
 import { writeFileSync, appendFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -35,16 +38,19 @@ export class SetupError extends Error {}
 
 export function readOptions(env) {
   const name = (env.WORKER_NAME || 'cwb-agency').trim();
-  const domains = (env.CUSTOM_DOMAIN || '')
-    .split(',')
-    .map((d) => d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
-    .filter(Boolean);
+  const clean = (d) => d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  const pagesDomain = clean(env.PAGES_DOMAIN || '');
+  // A hostname served by GitHub Pages cannot also be a Worker custom domain.
+  const domains = (env.CUSTOM_DOMAIN || '').split(',').map(clean).filter((d) => d && d !== pagesDomain);
   if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(name)) throw new SetupError(`WORKER_NAME "${name}" must be lowercase letters, digits and dashes`);
   for (const d of domains) if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)) throw new SetupError(`CUSTOM_DOMAIN "${d}" is not a hostname`);
+  if (pagesDomain && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(pagesDomain)) throw new SetupError(`PAGES_DOMAIN "${pagesDomain}" is not a hostname`);
   return {
     name,
     dbName: (env.D1_DATABASE_NAME || `${name}-db`).trim(),
+    dbExplicit: !!(env.D1_DATABASE_NAME || '').trim(),
     domains,
+    pagesDomain,
     takeover: env.CUSTOM_DOMAIN_TAKEOVER === 'true',
     wantedSubdomain: (env.WORKERS_DEV_SUBDOMAIN || '').trim().toLowerCase(),
     paymentMode: env.PAYMENT_MODE === 'live' ? 'live' : 'sandbox',
@@ -128,37 +134,75 @@ async function assertCompatibleD1(cf, acct, db) {
   }
 }
 
-async function ensureD1(cf, acct, dbName) {
-  const l = await cf('GET', `/accounts/${acct}/d1/database?name=${encodeURIComponent(dbName)}&per_page=100`);
-  if (!l.ok) throw new SetupError(`D1 list failed (${errText(l)}). Does the API token include "Account → D1 → Edit"?`);
-  const found = l.result.find((d) => d.name === dbName);
+/** Tables that only this app's schema has — used to recognise a database this app already set up. */
+const OUR_MARKERS = ['orders', 'landing_pages', 'project_requirements'];
+const isOurs = (tables) => !!tables && OUR_MARKERS.every((t) => tables.includes(t));
+
+/**
+ * Find or create the app database. Never blocks on the free-plan D1 limit if it can avoid it:
+ *   1. D1_DATABASE_NAME (explicit)            → use it (refusing another project's database)
+ *   2. "<worker>-db" exists                   → use it
+ *   3. a database already holding THIS app    → use it (a database auto-picked on an earlier run)
+ *   4. create "<worker>-db"
+ *   5. limit reached → reuse an EMPTY database (verified 0 tables), preferring one named like the app
+ */
+async function ensureD1(cf, acct, opts, log, warn) {
+  const byName = async (n) => {
+    const l = await cf('GET', `/accounts/${acct}/d1/database?name=${encodeURIComponent(n)}&per_page=100`);
+    if (!l.ok) throw new SetupError(`D1 list failed (${errText(l)}). Does the API token include "Account → D1 → Edit"?`);
+    return l.result.find((d) => d.name === n) || null;
+  };
+  const wanted = opts.dbName;
+  const found = await byName(wanted);
   if (found) {
     await assertCompatibleD1(cf, acct, found);
-    return { id: found.uuid, created: false };
+    return { id: found.uuid, name: found.name, created: false };
   }
-  const c = await cf('POST', `/accounts/${acct}/d1/database`, { name: dbName });
-  if (c.ok) return { id: c.result.uuid, created: true };
-  if (hasCode(c, 7406) || /limit/i.test(errText(c))) {
-    const all = await listAllD1(cf, acct);
-    const described = [];
-    for (const d of all) {
-      const t = await tablesOf(cf, acct, d.uuid);
-      const what = t === null ? 'tables: unknown' : t.length === 0 ? 'EMPTY — can be reused' : `${t.length} tables: ${t.slice(0, 5).join(', ')}${t.length > 5 ? ', …' : ''}`;
-      described.push({ empty: t !== null && t.length === 0, line: `   • ${d.name}  (${what}; ${Math.round((d.file_size || 0) / 1024)} KB, created ${(d.created_at || '').slice(0, 10)})` });
+
+  // Inspect every database once (real table lists; the list API's num_tables is unreliable).
+  const all = await listAllD1(cf, acct);
+  const described = [];
+  for (const d of all) described.push({ db: d, tables: await tablesOf(cf, acct, d.uuid) });
+
+  if (!opts.dbExplicit) {
+    const mine = described.find((x) => isOurs(x.tables));
+    if (mine) {
+      log(`✓ using the database that already holds this app: ${mine.db.name}`);
+      return { id: mine.db.uuid, name: mine.db.name, created: false };
     }
-    const rows = described.map((d) => d.line).join('\n');
-    const empties = described.filter((d) => d.empty).length;
-    throw new SetupError(
-      `Your Cloudflare account already has the maximum number of D1 databases (${all.length}) on its plan, so "${dbName}" could not be created.\n` +
-        `Existing databases:\n${rows}\n` +
-        'Fix (pick one):\n' +
-        '  A) Delete a database you no longer use: Cloudflare dashboard → Storage & databases → D1 → (database) → Settings → Delete. Then re-run this workflow.\n' +
-        (empties
-          ? '  B) Reuse a database marked EMPTY above: add the GitHub variable D1_DATABASE_NAME = <its name>, then re-run.'
-          : '  B) (No empty database found — option A is needed.)'),
-    );
   }
-  throw new SetupError(`D1 create failed: ${errText(c)}`);
+
+  const c = await cf('POST', `/accounts/${acct}/d1/database`, { name: wanted });
+  if (c.ok) return { id: c.result.uuid, name: wanted, created: true };
+  const limitHit = hasCode(c, 7406) || /limit/i.test(errText(c));
+  if (!limitHit) throw new SetupError(`D1 create failed: ${errText(c)}`);
+
+  const empties = described.filter((x) => x.tables && x.tables.length === 0);
+  if (!opts.dbExplicit && empties.length) {
+    const tokens = opts.name.split('-').filter((t) => t.length >= 3);
+    const pick = empties.find((x) => tokens.some((t) => x.db.name.includes(t))) || empties[0];
+    warn(
+      `Your account is at its D1 database limit (${all.length}), so instead of creating "${wanted}" this deploy uses the EMPTY database ` +
+        `"${pick.db.name}" (checked: 0 tables). Later deploys keep using it. To choose another one, set the GitHub variable D1_DATABASE_NAME.`,
+    );
+    return { id: pick.db.uuid, name: pick.db.name, created: false, reused: true };
+  }
+
+  const rows = described
+    .map(({ db, tables: t }) => {
+      const what = t === null ? 'tables: unknown' : t.length === 0 ? 'EMPTY — can be reused' : `${t.length} tables: ${t.slice(0, 5).join(', ')}${t.length > 5 ? ', …' : ''}`;
+      return `   • ${db.name}  (${what}; ${Math.round((db.file_size || 0) / 1024)} KB, created ${(db.created_at || '').slice(0, 10)})`;
+    })
+    .join('\n');
+  throw new SetupError(
+    `Your Cloudflare account already has the maximum number of D1 databases (${all.length}) on its plan, so "${wanted}" could not be created.\n` +
+      `Existing databases:\n${rows}\n` +
+      'Fix (pick one):\n' +
+      '  A) Delete a database you no longer use: Cloudflare dashboard → Storage & databases → D1 → (database) → Settings → Delete. Then re-run this workflow.\n' +
+      (empties.length
+        ? '  B) Reuse a database marked EMPTY above: set the GitHub variable D1_DATABASE_NAME = <its name>, then re-run.'
+        : '  B) (No empty database found — option A is needed.)'),
+  );
 }
 
 async function ensureKV(cf, acct, title) {
@@ -251,7 +295,7 @@ not_found_handling = "none"
 
 [vars]
 SITE_URL = ${toml(ids.siteUrl)}
-APP_ENV = ${toml(opts.appEnv)}
+${opts.pagesDomain ? `PUBLIC_SITE_URL = ${toml(`https://${opts.pagesDomain}`)}\n` : ''}APP_ENV = ${toml(opts.appEnv)}
 PAYMENT_MODE = ${toml(opts.paymentMode)}
 META_PIXEL_ID = ${toml(opts.pixel)}
 META_GRAPH_VERSION = "v21.0"
@@ -283,6 +327,17 @@ enabled = true
 `;
 }
 
+/** Look up the live workers.dev URL without creating anything. */
+export async function workerUrl(env, { fetchImpl = fetch } = {}) {
+  const opts = readOptions(env);
+  if (!env.CLOUDFLARE_API_TOKEN) throw new SetupError('CLOUDFLARE_API_TOKEN is not set');
+  const cf = client(env.CLOUDFLARE_API_TOKEN, fetchImpl);
+  const acct = await resolveAccount(cf, env);
+  const r = await cf('GET', `/accounts/${acct.id}/workers/subdomain`);
+  if (!r.ok || !r.result?.subdomain) throw new SetupError('This Cloudflare account has no workers.dev subdomain yet — run the Deploy workflow first.');
+  return `https://${opts.name}.${r.result.subdomain}.workers.dev`;
+}
+
 /** Main entry. Returns the summary; throws SetupError with a human-readable fix. */
 export async function run(env, { fetchImpl = fetch, dry = false, log = console.log, warn = (m) => console.log(`::warning::${m}`) } = {}) {
   const opts = readOptions(env);
@@ -292,45 +347,51 @@ export async function run(env, { fetchImpl = fetch, dry = false, log = console.l
   const acct = dry ? { id: '0'.repeat(32), name: 'dry-run' } : await resolveAccount(cf, env);
   log(`Cloudflare account: ${acct.name}`);
   const sub = dry ? 'example' : await workersSubdomain(cf, acct.id, opts.wantedSubdomain, log);
-  // Report every problem in ONE run instead of one per run.
-  const problems = [];
-  const attempt = async (fn) => {
+  const notes = [];
+  const note = (m) => { notes.push(m); warn(m); };
+  const d1 = dry ? { id: '11111111-1111-1111-1111-111111111111', name: opts.dbName, created: false } : await ensureD1(cf, acct.id, opts, log, note);
+  // A custom-domain problem never blocks the Worker: deploy on workers.dev and explain what to fix.
+  if (!dry && opts.domains.length) {
     try {
-      return await fn();
+      await checkCustomDomains(cf, acct, opts, log, warn);
     } catch (e) {
-      if (e instanceof SetupError) { problems.push(e.message); return null; }
-      throw e;
+      if (!(e instanceof SetupError)) throw e;
+      note(`Custom domain skipped — the Worker is deployed on workers.dev only for now. ${e.message.replace(/\n/g, ' ')}`);
+      opts.domains = [];
     }
-  };
-  const d1 = dry ? { id: '11111111-1111-1111-1111-111111111111', created: false } : await attempt(() => ensureD1(cf, acct.id, opts.dbName));
-  if (!dry && opts.domains.length) await attempt(() => checkCustomDomains(cf, acct, opts, log, warn));
-  if (problems.length === 1) throw new SetupError(problems[0]);
-  if (problems.length > 1) throw new SetupError(`${problems.length} problems need your action:\n\n` + problems.map((p, i) => `PROBLEM ${i + 1}: ${p}`).join('\n\n'));
+  }
   const kv = dry ? { id: '2'.repeat(32), created: false } : await ensureKV(cf, acct.id, `${opts.name}-kv`);
   const r2 = dry ? { ok: true } : await ensureR2(cf, acct.id, `${opts.name}-media`);
 
   const workersDevUrl = `https://${opts.name}.${sub}.workers.dev`;
   const siteUrl = opts.domains.length ? `https://${opts.domains[0]}` : workersDevUrl;
-  const config = renderConfig(opts, { siteUrl, d1: d1.id, kv: kv.id, r2 });
+  const config = renderConfig({ ...opts, dbName: d1.name }, { siteUrl, d1: d1.id, kv: kv.id, r2 });
 
   log([
     `Worker:            ${opts.name}`,
     `workers.dev URL:   ${workersDevUrl}`,
     `Custom domain(s):  ${opts.domains.length ? opts.domains.map((d) => `https://${d}`).join(', ') : '(not set yet)'}`,
+    `GitHub Pages:      ${opts.pagesDomain ? `https://${opts.pagesDomain} (storefront copy; backend = this Worker)` : '(not used)'}`,
     `SITE_URL:          ${siteUrl}`,
-    `D1:                ${opts.dbName} ${d1.created ? '(created)' : '(existing)'}`,
+    `D1:                ${d1.name} ${d1.created ? '(created)' : d1.reused ? '(reused empty database)' : '(existing)'}`,
     `KV:                ${opts.name}-kv ${kv.created ? '(created)' : '(existing)'}`,
     `R2:                ${r2.ok ? `${opts.name}-media ${r2.created ? '(created)' : '(existing)'}` : `disabled — ${r2.reason}`}`,
     `Payment mode:      ${opts.paymentMode}`,
   ].join('\n'));
-  if (!r2.ok) warn(`R2 is not enabled on this Cloudflare account (${r2.reason}). The site is deployed, but image/file uploads are off until you enable R2 (Dashboard → R2 → Get started) and re-run the deploy.`);
+  if (!r2.ok) note(`R2 is not enabled on this Cloudflare account (${r2.reason}). The site is deployed, but image/file uploads are off until you enable R2 (Dashboard → R2 → Get started) and re-run the deploy.`);
 
-  return { config, siteUrl, workersDevUrl, domains: opts.domains, r2: r2.ok, name: opts.name, account: acct.name };
+  return { config, siteUrl, workersDevUrl, domains: opts.domains, r2: r2.ok, name: opts.name, account: acct.name, database: d1.name, notes };
 }
 
 // CLI
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try {
+    if (process.argv.includes('--url-only')) {
+      const url = await workerUrl(process.env);
+      console.log(url);
+      if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `workers_dev_url=${url}\n`);
+      process.exit(0);
+    }
     const out = await run(process.env, { dry: process.argv.includes('--dry-run') });
     writeFileSync(new URL('../worker/wrangler.deploy.toml', import.meta.url), out.config);
     if (process.env.GITHUB_OUTPUT) {
@@ -338,6 +399,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
         `site_url=${out.siteUrl}`, `workers_dev_url=${out.workersDevUrl}`, `custom_domain=${out.domains.join(', ')}`,
         `r2=${out.r2}`, `worker_name=${out.name}`, `account=${out.account}`,
       ].join('\n') + '\n');
+    }
+    if (process.env.GITHUB_STEP_SUMMARY && out.notes.length) {
+      appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### ⚠️ Deploy notes\n\n${out.notes.map((n) => `- ${n}`).join('\n')}\n\n`);
     }
   } catch (e) {
     if (e instanceof SetupError) {

@@ -1,4 +1,4 @@
-import { $, $$, api, taka, bn, esc, getCart, setCart, attribution, formJson, showFieldError, setMsg, toast } from './lib.js';
+import { $, $$, api, backend, taka, bn, esc, getCart, setCart, attribution, formJson, showFieldError, setMsg, toast } from './lib.js';
 
 const root = $('[data-checkout]');
 const linesEl = $('[data-cart-lines]', root);
@@ -94,8 +94,8 @@ placeBtn.addEventListener('click', async () => {
     window.SBTrack?.fire('InitiateCheckout', { value: r.total, currency: 'BDT', num_items: selections().length }, r.initiateEventId);
     setCart([]);
     sessionStorage.removeItem('sb_coupon');
-    localStorage.setItem('sb_last_order', JSON.stringify({ no: r.orderNumber, url: r.orderUrl }));
-    location.href = r.redirectUrl || r.orderUrl;
+    localStorage.setItem('sb_last_order', JSON.stringify({ no: r.orderNumber, url: backend(r.orderUrl) }));
+    location.href = r.redirectUrl || backend(r.orderUrl);
   } catch (err) {
     if (err.code === 'price_changed' && err.data) { quote = err.data; renderLines(quote); renderSummary(quote); }
     showFieldError(form, err.code, err.message);

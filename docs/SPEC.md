@@ -595,7 +595,9 @@ npm test && npm run test:e2e
 
 **Branches.** Feature branches lead to PRs (`ci.yml`: build, typecheck, unit/integration, E2E). Merging to `main` runs `deploy.yml`.
 
-**Recommended custom domain: `connectwithbayezid.it.com`.** It is already an active Cloudflare zone and matches the brand (Connect With Bayezid = Cwb). Set the GitHub variable `CUSTOM_DOMAIN=connectwithbayezid.it.com,www.connectwithbayezid.it.com`; `www` redirects to the bare domain. The setup script verifies that the zone is active in the same account and that no other Worker owns the hostname.
+**`shop.sayadbayezid.com` via GitHub Pages (DNS stays at Hostinger).** `.github/workflows/pages.yml` runs `scripts/export-static.mjs` after every deploy, hourly and on demand. It saves the public pages from the live Worker into a static site on GitHub Pages; the Hostinger DNS needs one CNAME, `shop → bayeziddev.github.io`. On those pages, browser JS sends all `/api/*` calls to the Worker (`<meta name="sb-api-base">`), and the Worker allows only that origin via CORS (`PUBLIC_SITE_URL`, never for `/api/admin`). The Worker keeps payments, the order page and portal, invoices, images and the admin panel. Canonical URLs and the sitemap point to the GitHub Pages domain, and Worker-served HTML is `noindex`. Page-view event IDs are generated in the browser, so static copies never share one.
+
+**Cloudflare custom domain `connectwithbayezid.it.com`.** It is already an active Cloudflare zone and matches the brand (Connect With Bayezid = Cwb). Set the GitHub variable `CUSTOM_DOMAIN=connectwithbayezid.it.com,www.connectwithbayezid.it.com`; `www` redirects to the bare domain. The setup script verifies that the zone is active in the same account and that no other Worker owns the hostname.
 
 **Optional: `shop.sayadbayezid.com` (registrar Hostinger).**
 - A Worker custom domain requires the domain to be an **active Cloudflare zone**. A CNAME from Hostinger to `workers.dev` does not work, and subdomain-only or partial setups need a paid Business plan.

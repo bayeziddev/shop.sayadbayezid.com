@@ -99,6 +99,17 @@ if (popup && !sessionStorage.getItem('popup_' + popup.dataset.popup)) {
   $('[data-close-popup]', popup)?.addEventListener('click', () => popup.close());
 }
 
+/* Quote page opened as /quote?package=<slug> (works on the static GitHub Pages copy too) */
+const quoteSlug = new URLSearchParams(location.search).get('package');
+const quoteForm = document.querySelector('[data-lead-form][data-source="quote"]');
+if (quoteSlug && quoteForm && !quoteForm.dataset.packageId) {
+  api('/api/packages/' + encodeURIComponent(quoteSlug)).then((p) => {
+    quoteForm.dataset.packageId = String(p.id);
+    const lead = document.querySelector('.page-hero .lead');
+    if (lead) lead.textContent = `${p.name} — আপনার বাড়তি চাহিদা জানান`;
+  }).catch(() => {});
+}
+
 /* Lead forms (quote / contact / landing) */
 $$('[data-lead-form]').forEach((form) => form.addEventListener('submit', async (e) => {
   e.preventDefault();

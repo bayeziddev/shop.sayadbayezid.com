@@ -203,3 +203,27 @@ describe('canonical host', () => {
     expect(r.headers.get('location')).toBe('http://localhost:8787/faq?x=1');
   });
 });
+
+describe('GitHub Pages storefront + Worker backend', () => {
+  it('lets the GitHub Pages origin call the public API (CORS), but not other origins', async () => {
+    const pre = await SELF.fetch(BASE + '/api/pricing/quote', { method: 'OPTIONS', headers: { origin: 'https://shop.example.com', 'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type' } });
+    expect(pre.headers.get('access-control-allow-origin')).toBe('https://shop.example.com');
+    const evil = await SELF.fetch(BASE + '/api/packages', { headers: { origin: 'https://evil.example' } });
+    expect(evil.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
+  it('never opens the admin API to another origin', async () => {
+    const r = await SELF.fetch(BASE + '/api/admin/auth/status', { headers: { origin: 'https://shop.example.com' } });
+    expect(r.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
+  it('pages point their API calls at the Worker and their canonical URL at the public domain', async () => {
+    const r = await SELF.fetch(BASE + '/faq');
+    const html = await r.text();
+    expect(html).toContain('<meta name="sb-api-base" content="http://localhost:8787">');
+    expect(html).toContain('<link rel="canonical" href="https://shop.example.com/faq">');
+    expect(r.headers.get('x-robots-tag')).toBe('noindex'); // the Worker copy stays out of search results
+    const sitemap = await (await SELF.fetch(BASE + '/sitemap.xml')).text();
+    expect(sitemap).toContain('<loc>https://shop.example.com/</loc>');
+  });
+});
