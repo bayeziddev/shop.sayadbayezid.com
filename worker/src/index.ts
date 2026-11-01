@@ -6,7 +6,7 @@ import { orders } from './routes/orders';
 import { publicApi } from './routes/public-api';
 import { portal } from './routes/portal';
 import { admin } from './routes/admin';
-import { runScheduled } from './lib/cron';
+import { runScheduled, maybeRunMaintenance } from './lib/cron';
 import { randomToken, publicOrigin, isSplit } from './lib/util';
 import { cors } from 'hono/cors';
 
@@ -47,6 +47,8 @@ app.use('*', async (c, next) => {
   // When GitHub Pages serves the public copy, keep search engines on that domain only.
   if (isSplit(c.env) && (h.get('content-type') || '').includes('text/html')) h.set('x-robots-tag', 'noindex');
   if (url.pathname.startsWith('/api/')) h.set('cache-control', h.get('cache-control') || 'no-store');
+  // Hourly upkeep piggybacks on traffic (at most once per hour, after the response is sent).
+  c.executionCtx.waitUntil(maybeRunMaintenance(c.env, (p) => c.executionCtx.waitUntil(p)).catch(() => false));
   return undefined;
 });
 
@@ -126,6 +128,7 @@ app.notFound(async (c) => {
 export default {
   fetch: app.fetch,
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    await env.KV.put('maint:last-run', new Date().toISOString(), { expirationTtl: 3600 });
     ctx.waitUntil(runScheduled(env));
   },
 } satisfies ExportedHandler<Env>;

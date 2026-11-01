@@ -1,6 +1,7 @@
 import { SELF, env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { priceLine } from '../../shared/pricing';
+import { maybeRunMaintenance } from '../../worker/src/lib/cron';
 import pkgFixture from '../fixtures/package-list.json';
 import orderFixture from '../fixtures/create-order.json';
 import loginFixture from '../fixtures/admin-login.json';
@@ -225,5 +226,16 @@ describe('GitHub Pages storefront + Worker backend', () => {
     expect(r.headers.get('x-robots-tag')).toBe('noindex'); // the Worker copy stays out of search results
     const sitemap = await (await SELF.fetch(BASE + '/sitemap.xml')).text();
     expect(sitemap).toContain('<loc>https://shop.example.com/</loc>');
+  });
+});
+
+describe('hourly upkeep without a Cloudflare cron slot', () => {
+  it('runs at most once per hour, triggered by traffic', async () => {
+    const pending: Promise<unknown>[] = [];
+    const live = { ...env, APP_ENV: 'development' } as typeof env;
+    expect(await maybeRunMaintenance(live, (p) => pending.push(p))).toBe(true);
+    expect(await maybeRunMaintenance(live, (p) => pending.push(p))).toBe(false);
+    await Promise.all(pending); // the run itself completes without errors on a real schema
+    expect(pending).toHaveLength(1);
   });
 });
