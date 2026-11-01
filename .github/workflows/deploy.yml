@@ -83,6 +83,7 @@ jobs:
           CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
           CUSTOM_DOMAIN_TAKEOVER: ${{ vars.CUSTOM_DOMAIN_TAKEOVER }}
           PAGES_DOMAIN: ${{ vars.PAGES_DOMAIN }}
+          ENABLE_CRON: ${{ vars.ENABLE_CRON || 'false' }}
           WORKERS_DEV_SUBDOMAIN: ${{ vars.WORKERS_DEV_SUBDOMAIN }}
           PAYMENT_MODE: ${{ vars.PAYMENT_MODE || 'sandbox' }}
           ENABLE_BROWSER_RENDERING: ${{ vars.ENABLE_BROWSER_RENDERING || 'false' }}
@@ -109,7 +110,19 @@ jobs:
 
       - name: Deploy Worker
         if: steps.creds.outputs.ready == 'true'
-        run: npx wrangler deploy --config worker/wrangler.deploy.toml
+        run: |
+          set +e
+          npx wrangler deploy --config worker/wrangler.deploy.toml 2>&1 | tee deploy.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            # The code is uploaded even when only the cron schedule is rejected (free plan: 5 cron triggers per account).
+            if grep -q "Uploaded " deploy.log && grep -q "code: 10072" deploy.log; then
+              echo "::warning::Worker deployed. Its cron trigger was refused (free plan limit of 5 cron triggers per account); hourly upkeep runs on site traffic instead. Remove ENABLE_CRON or free a cron slot to silence this."
+            else
+              exit "$status"
+            fi
+          fi
 
       - name: Sync Worker secrets
         if: steps.creds.outputs.ready == 'true'

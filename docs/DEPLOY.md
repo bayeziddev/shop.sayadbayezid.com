@@ -72,6 +72,7 @@ Go to **github.com/bayeziddev/shop.sayadbayezid.com → Settings → Secrets and
 | `CUSTOM_DOMAIN_TAKEOVER` | `true` | move the hostname away from an old Worker that currently uses it |
 | `D1_DATABASE_NAME` | `cwb-api` | use a specific existing **empty** database. Usually not needed: at the D1 limit the deploy automatically reuses an empty database, preferring one named like the app. |
 | `PAGES_DOMAIN` | `shop.sayadbayezid.com` | publish the storefront on GitHub Pages at this domain (see §6) |
+| `ENABLE_CRON` | `true` | add a Cloudflare cron trigger. Off by default: the free plan allows only **5 per account**, and the Worker already runs its hourly upkeep (lead follow-ups, stuck-project alerts, cleanup) on incoming traffic, including the hourly GitHub Pages refresh. |
 | `ENABLE_BROWSER_RENDERING` | `true` | real PDF invoices; otherwise a print-to-PDF page is used |
 
 ## 4. First deploy
@@ -162,6 +163,7 @@ npx wrangler secret put ADMIN_SETUP_TOKEN --config worker/wrangler.deploy.toml
 | `Deploy skipped — add the CLOUDFLARE_API_TOKEN` | Step 3 |
 | `no workers.dev subdomain yet` | Open Workers & Pages once (step 1), or set `WORKERS_DEV_SUBDOMAIN` |
 | `D1 list failed … D1: Edit` | Edit the API token and add **Account → D1 → Edit** |
+| `reached the Workers Free limit of 5 cron triggers` (code 10072) | Harmless now. The Worker is uploaded and the warning says so; upkeep runs on traffic. Only appears if you set `ENABLE_CRON=true`. |
 | `uses the EMPTY database "…"` (warning) | Normal on accounts at the free 10-database limit: the deploy reuses an empty database and keeps using it. Nothing to do. |
 | `maximum number of D1 databases` (error) | Only when **no** empty database exists. Delete an unused one (**Storage & databases → D1 → database → Settings → Delete**) and re-run. |
 | `Custom domain skipped` (warning) | The Worker is deployed on workers.dev anyway. Fix the domain as the note says, or use `PAGES_DOMAIN` (§6). |

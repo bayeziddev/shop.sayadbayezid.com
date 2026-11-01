@@ -4,7 +4,22 @@ import { sendAll } from './notify';
 import { notifyAdmins } from './audit';
 import { nowIso } from './util';
 
-/** Hourly maintenance (cron trigger "17 * * * *", see scripts/cf-setup.mjs). */
+const GUARD = 'maint:last-run';
+
+/**
+ * Run the hourly upkeep at most once per hour. Called from incoming requests (no cron slot needed —
+ * the free plan allows only 5 cron triggers per account) and from the optional cron trigger.
+ * Returns true when this call started a run.
+ */
+export async function maybeRunMaintenance(env: Env, waitUntil: (p: Promise<unknown>) => void): Promise<boolean> {
+  if (env.APP_ENV === 'test') return false;
+  if (await env.KV.get(GUARD)) return false;
+  await env.KV.put(GUARD, new Date().toISOString(), { expirationTtl: 3600 });
+  waitUntil(runScheduled(env).catch((e) => console.error('maintenance failed', e)));
+  return true;
+}
+
+/** Hourly maintenance: lead follow-ups, stuck-project alerts, stale unpaid orders. */
 export async function runScheduled(env: Env): Promise<void> {
   const s = await getSettings(env);
   const now = nowIso();

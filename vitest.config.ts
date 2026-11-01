@@ -19,6 +19,7 @@ export default defineConfig(async () => {
                   DATA_ENCRYPTION_KEY: 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=',
                   // Storefront copy on GitHub Pages; this Worker is the backend (CORS + canonical URLs).
                   PUBLIC_SITE_URL: 'https://shop.example.com',
+                  APP_ENV: 'test', // maintenance is exercised explicitly in its own test
                 },
               },
             }),

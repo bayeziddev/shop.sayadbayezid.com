@@ -24,6 +24,8 @@
  *   ENABLE_BROWSER_RENDERING (optional)  "true" to add the Browser Rendering binding (real PDF invoices)
  *   META_PIXEL_ID            (optional)  default 1469319801771203
  *   APP_ENV                  (optional)  "production" (default) | "staging" — staging never loads tracking
+ *   ENABLE_CRON              (optional)  "true" to add a Cloudflare cron trigger. Off by default: the free plan allows
+ *                                        only 5 per account, and the Worker runs its hourly upkeep on traffic anyway.
  *
  * Flags: --dry-run   (no API calls; fake ids — used by tests to validate the generated config)
  *        --url-only  (only look up the workers.dev URL; creates nothing — used by the GitHub Pages workflow)
@@ -57,6 +59,7 @@ export function readOptions(env) {
     browser: env.ENABLE_BROWSER_RENDERING === 'true',
     pixel: (env.META_PIXEL_ID ?? '1469319801771203').trim(),
     appEnv: env.APP_ENV === 'staging' ? 'staging' : 'production',
+    cron: env.ENABLE_CRON === 'true',
   };
 }
 
@@ -319,9 +322,7 @@ bucket_name = ${toml(`${opts.name}-media`)}
 [ai]
 binding = "AI"
 ${opts.browser ? '\n[browser]\nbinding = "BROWSER"\n' : ''}
-[triggers]
-crons = ["17 * * * *"]
-
+${opts.cron ? '[triggers]\ncrons = ["17 * * * *"]\n' : '# No cron trigger (free plan: 5 per account) — hourly upkeep runs on incoming traffic instead.\n'}
 [observability]
 enabled = true
 `;

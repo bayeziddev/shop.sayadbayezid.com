@@ -176,6 +176,13 @@ describe('cf-setup', () => {
     expect(calls.some((c) => c.includes('/zones'))).toBe(false);
   });
 
+  it('adds no cron trigger unless ENABLE_CRON=true (free plan: 5 per account)', async () => {
+    const a = fakeCf({});
+    expect((await run(env, { fetchImpl: a.impl, ...quiet })).config).not.toContain('[triggers]');
+    const b = fakeCf({});
+    expect((await run({ ...env, ENABLE_CRON: 'true' }, { fetchImpl: b.impl, ...quiet })).config).toContain('crons = ["17 * * * *"]');
+  });
+
   it('deploys without R2 when R2 is not enabled', async () => {
     const { impl } = fakeCf({ r2Enabled: false });
     const r = await run(env, { fetchImpl: impl, ...quiet });
