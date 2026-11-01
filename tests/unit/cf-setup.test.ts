@@ -50,6 +50,15 @@ function fakeCf(state: {
 
 const env = { CLOUDFLARE_API_TOKEN: 't', CLOUDFLARE_ACCOUNT_ID: 'acct1' };
 const quiet = { log: () => {}, warn: () => {} };
+const OUR_TABLES = ['settings', 'orders', 'packages', 'landing_pages', 'project_requirements'];
+
+/** The real situation seen in the deploy log: 10 databases, two of them empty. */
+function fullAccount() {
+  const names = ['prakriti-herbal-db', 'sidra-glow-studio-db', 'lks-attire-db', 'amader-tangail', 'cwb-api', 'bayezid-agency', 'smartleadgen', 'smartgen', 'zamil-shop-bd-db', 'sidra-jewellery-db'];
+  const dbs = names.map((name, i) => ({ uuid: `u${i}`, name, num_tables: 0 }));
+  const tables = Object.fromEntries(dbs.map((d) => [d.uuid, d.name === 'cwb-api' || d.name === 'smartgen' ? [] : ['products', 'orders']]));
+  return { dbs, tables };
+}
 
 describe('cf-setup', () => {
   it('creates resources and points SITE_URL at workers.dev', async () => {
@@ -62,35 +71,41 @@ describe('cf-setup', () => {
     expect(r.config).not.toContain('custom_domain = true');
   });
 
-  it('explains the D1 database limit and lists existing databases', async () => {
-    // The list API reports num_tables: 0 even for databases that have data, so the real tables are queried.
+  it('at the D1 limit, reuses an EMPTY database (preferring one named like the app) instead of failing', async () => {
+    const state = fullAccount();
+    const warnings: string[] = [];
+    const { impl } = fakeCf(state);
+    const r = await run(env, { fetchImpl: impl, log: () => {}, warn: (m) => warnings.push(m) });
+    expect(r.database).toBe('cwb-api');
+    expect(r.config).toContain('database_name = "cwb-api"');
+    expect(r.config).toContain('database_id = "u4"');
+    expect(warnings.join(' ')).toContain('uses the EMPTY database "cwb-api"');
+  });
+
+  it('keeps using the database it picked earlier, even once a slot is free (no data is abandoned)', async () => {
+    const state = fullAccount();
+    state.tables.u4 = OUR_TABLES; // cwb-api now holds this app's tables
+    const { impl, calls } = fakeCf({ ...state, dbLimit: 99 });
+    const r = await run(env, { fetchImpl: impl, ...quiet });
+    expect(r.database).toBe('cwb-api');
+    expect(calls.some((c) => c.startsWith('POST') && c.endsWith('/d1/database'))).toBe(false);
+  });
+
+  it('fails with the full list only when no empty database exists', async () => {
     const dbs = Array.from({ length: 10 }, (_, i) => ({ uuid: `u${i}`, name: `old-project-${i}`, num_tables: 0 }));
-    const tables = Object.fromEntries(dbs.map((d, i) => [d.uuid, i === 3 ? [] : ['products', 'orders']]));
-    const { impl } = fakeCf({ dbs, tables });
+    const { impl } = fakeCf({ dbs, tables: Object.fromEntries(dbs.map((d) => [d.uuid, ['products', 'orders']])) });
     const e = await run(env, { fetchImpl: impl, ...quiet }).catch((x) => x);
     expect(e).toBeInstanceOf(SetupError);
     expect(e.message).toContain('maximum number of D1 databases (10)');
-    expect(e.message).toContain('old-project-3  (EMPTY — can be reused');
     expect(e.message).toContain('old-project-0  (2 tables: products, orders');
-    expect(e.message).toContain('D1_DATABASE_NAME');
-  });
-
-  it('reports the D1 limit AND a wrong custom domain in the same run', async () => {
-    const dbs = Array.from({ length: 10 }, (_, i) => ({ uuid: `u${i}`, name: `db${i}` }));
-    const { impl, calls } = fakeCf({ dbs, tables: Object.fromEntries(dbs.map((d) => [d.uuid, ['t']])), zones: [] });
-    const e = await run({ ...env, CUSTOM_DOMAIN: 'shop.sayadbayezid.com' }, { fetchImpl: impl, ...quiet }).catch((x) => x);
-    expect(e.message).toMatch(/^2 problems need your action/);
-    expect(e.message).toContain('PROBLEM 1: Your Cloudflare account already has the maximum');
-    expect(e.message).toContain('PROBLEM 2: "shop.sayadbayezid.com" is not a domain in the Cloudflare account');
     expect(e.message).toContain('No empty database found');
-    // nothing else is created when the run is going to fail
-    expect(calls.some((c) => c.startsWith('POST') && c.includes('/storage/kv/'))).toBe(false);
   });
 
-  it('reuses an empty existing database via D1_DATABASE_NAME', async () => {
+  it('reuses an explicitly named empty database via D1_DATABASE_NAME', async () => {
     const { impl } = fakeCf({ dbs: [{ uuid: 'empty1', name: 'spare' }], tables: { empty1: [] } });
     const r = await run({ ...env, D1_DATABASE_NAME: 'spare' }, { fetchImpl: impl, ...quiet });
     expect(r.config).toContain('database_id = "empty1"');
+    expect(r.config).toContain('database_name = "spare"');
   });
 
   it('refuses a database that belongs to another project', async () => {
@@ -99,7 +114,7 @@ describe('cf-setup', () => {
   });
 
   it('accepts its own database on re-deploy', async () => {
-    const { impl } = fakeCf({ dbs: [{ uuid: 'mine', name: 'cwb-agency-db' }], tables: { mine: ['orders', 'packages', 'd1_migrations'] } });
+    const { impl } = fakeCf({ dbs: [{ uuid: 'mine', name: 'cwb-agency-db' }], tables: { mine: OUR_TABLES } });
     const r = await run(env, { fetchImpl: impl, ...quiet });
     expect(r.config).toContain('database_id = "mine"');
   });
@@ -113,22 +128,52 @@ describe('cf-setup', () => {
     expect(r.config).toContain('SITE_URL = "https://connectwithbayezid.it.com"');
   });
 
-  it('rejects a domain that is not in this Cloudflare account, or not active', async () => {
-    const a = fakeCf({ zones: [{ name: 'connectwithbayezid.it.com', status: 'active' }] });
-    const e = await run({ ...env, CUSTOM_DOMAIN: 'shop.sayadbayezid.com' }, { fetchImpl: a.impl, ...quiet }).catch((x) => x);
-    expect(e.message).toContain('"shop.sayadbayezid.com" is not a domain in the Cloudflare account "Bayezid"');
-    expect(e.message).toContain('Domains in this account: connectwithbayezid.it.com (active)');
-    const b = fakeCf({ zones: [{ name: 'sayadbayezid.com', status: 'pending' }] });
-    await expect(run({ ...env, CUSTOM_DOMAIN: 'shop.sayadbayezid.com' }, { fetchImpl: b.impl, ...quiet })).rejects.toThrow(/"pending"/);
+  it('a domain that is not in this account never blocks the Worker: it deploys on workers.dev and explains why', async () => {
+    const warnings: string[] = [];
+    const { impl } = fakeCf({ zones: [{ name: 'connectwithbayezid.it.com', status: 'active' }] });
+    const r = await run({ ...env, CUSTOM_DOMAIN: 'shop.sayadbayezid.com' }, { fetchImpl: impl, log: () => {}, warn: (m) => warnings.push(m) });
+    expect(r.siteUrl).toBe('https://cwb-agency.cwbagency.workers.dev');
+    expect(r.domains).toEqual([]);
+    expect(r.config).not.toContain('custom_domain = true');
+    expect(r.notes.join(' ')).toContain('"shop.sayadbayezid.com" is not a domain in the Cloudflare account "Bayezid"');
+    expect(r.notes.join(' ')).toContain('Domains in this account: connectwithbayezid.it.com (active)');
+  });
+
+  it('the real situation from the deploy log (D1 limit + wrong domain) now deploys instead of failing', async () => {
+    const { impl } = fakeCf({ ...fullAccount(), zones: [{ name: 'connectwithbayezid.it.com', status: 'active' }] });
+    const r = await run({ ...env, CUSTOM_DOMAIN: 'shop.sayadbayezid.com' }, { fetchImpl: impl, ...quiet });
+    expect(r.database).toBe('cwb-api');
+    expect(r.siteUrl).toBe('https://cwb-agency.cwbagency.workers.dev');
+    expect(r.notes).toHaveLength(2);
+  });
+
+  it('a pending zone is skipped with a note', async () => {
+    const { impl } = fakeCf({ zones: [{ name: 'sayadbayezid.com', status: 'pending' }] });
+    const r = await run({ ...env, CUSTOM_DOMAIN: 'shop.sayadbayezid.com' }, { fetchImpl: impl, ...quiet });
+    expect(r.domains).toEqual([]);
+    expect(r.notes.join(' ')).toContain('"pending"');
   });
 
   it('only takes a hostname away from an old Worker when CUSTOM_DOMAIN_TAKEOVER=true', async () => {
     const state = { zones: [{ name: 'connectwithbayezid.it.com', status: 'active' }], workerDomains: [{ id: 'd1', hostname: 'connectwithbayezid.it.com', service: 'absvai' }] };
     const a = fakeCf(state);
-    await expect(run({ ...env, CUSTOM_DOMAIN: 'connectwithbayezid.it.com' }, { fetchImpl: a.impl, ...quiet })).rejects.toThrow(/attached to another Worker \("absvai"\)/);
+    const r = await run({ ...env, CUSTOM_DOMAIN: 'connectwithbayezid.it.com' }, { fetchImpl: a.impl, ...quiet });
+    expect(r.domains).toEqual([]);
+    expect(r.notes.join(' ')).toContain('attached to another Worker ("absvai")');
+    expect(a.calls.some((c) => c.startsWith('DELETE'))).toBe(false);
     const b = fakeCf(state);
-    await run({ ...env, CUSTOM_DOMAIN: 'connectwithbayezid.it.com', CUSTOM_DOMAIN_TAKEOVER: 'true' }, { fetchImpl: b.impl, ...quiet });
+    const r2 = await run({ ...env, CUSTOM_DOMAIN: 'connectwithbayezid.it.com', CUSTOM_DOMAIN_TAKEOVER: 'true' }, { fetchImpl: b.impl, ...quiet });
     expect(b.calls).toContain('DELETE /accounts/acct1/workers/domains/d1');
+    expect(r2.domains).toEqual(['connectwithbayezid.it.com']);
+  });
+
+  it('PAGES_DOMAIN: storefront on GitHub Pages, Worker stays on workers.dev as the backend', async () => {
+    const { impl, calls } = fakeCf({});
+    const r = await run({ ...env, PAGES_DOMAIN: 'shop.sayadbayezid.com', CUSTOM_DOMAIN: 'shop.sayadbayezid.com' }, { fetchImpl: impl, ...quiet });
+    expect(r.config).toContain('PUBLIC_SITE_URL = "https://shop.sayadbayezid.com"');
+    expect(r.config).toContain('SITE_URL = "https://cwb-agency.cwbagency.workers.dev"');
+    expect(r.config).not.toContain('custom_domain = true'); // a GitHub Pages host is never also a Worker custom domain
+    expect(calls.some((c) => c.includes('/zones'))).toBe(false);
   });
 
   it('deploys without R2 when R2 is not enabled', async () => {
