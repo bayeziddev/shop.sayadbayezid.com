@@ -1,5 +1,6 @@
 import type { Env } from '../env';
 import { normalizeBdPhone, sha256Hex } from './util';
+import { getSettings } from './settings';
 
 /**
  * Meta Conversions API.
@@ -10,7 +11,7 @@ import { normalizeBdPhone, sha256Hex } from './util';
  *    gateway-validated (or human-verified) payment AND PAYMENT_MODE = 'live'.
  *  - In any non-production environment nothing is sent at all.
  */
-export type MetaEventName = 'PageView' | 'ViewContent' | 'Lead' | 'InitiateCheckout' | 'Purchase';
+export type MetaEventName = 'PageView' | 'ViewContent' | 'Lead' | 'InitiateCheckout' | 'Purchase' | 'LeadBoxStep';
 
 export interface MetaUserInput {
   email?: string;
@@ -24,6 +25,8 @@ export interface MetaUserInput {
 }
 
 export interface MetaEventInput {
+  /** Owner's own browser (?sb_internal=1) or a test run: never sent to Meta. */
+  internal?: boolean;
   name: MetaEventName;
   eventId: string;
   sourceUrl: string;
@@ -53,8 +56,12 @@ export function trackingEnabled(env: Env): boolean {
   return env.APP_ENV === 'production' && !!env.META_CAPI_TOKEN;
 }
 
-export async function buildPayload(ev: MetaEventInput) {
+/** Crawlers, uptime checks and headless browsers are not people — their hits are never sent. */
+export const BOT_UA = /bot\/|bot\b.*\+https?:|crawler|spider|slurp|\+https?:\/\/|HeadlessChrome|Lighthouse|PageSpeed|uptime|facebookexternalhit|curl\/|wget\/|python-requests|node-fetch|axios\/|go-http-client|okhttp/i;
+
+export async function buildPayload(ev: MetaEventInput, testEventCode = '') {
   return {
+    ...(testEventCode ? { test_event_code: testEventCode } : {}),
     data: [
       {
         event_name: ev.name,
@@ -74,19 +81,38 @@ export async function sendMetaEvent(env: Env, pixelId: string, ev: MetaEventInpu
   return send(env, pixelId, ev);
 }
 
+/** Record a Conversions API attempt for Admin → ট্র্যাকিং. Successful PageView/ViewContent are sampled (1 in 20) to spare D1 writes. */
+async function log(env: Env, ev: MetaEventInput, status: 'sent' | 'failed' | 'skipped', http: number | null, detail: string) {
+  if (status === 'sent' && (ev.name === 'PageView' || ev.name === 'ViewContent' || ev.name === 'LeadBoxStep') && Math.random() >= 0.05) return;
+  await env.DB.prepare('INSERT INTO tracking_log (event, event_id, status, http_status, detail) VALUES (?, ?, ?, ?, ?)')
+    .bind(ev.name, ev.eventId.slice(0, 64), status, http, detail.slice(0, 300)).run().catch(() => {});
+}
+
 async function send(env: Env, pixelId: string, ev: MetaEventInput): Promise<{ sent: boolean; reason?: string }> {
   if (!trackingEnabled(env)) return { sent: false, reason: 'disabled_in_this_environment' };
-  if (!pixelId) return { sent: false, reason: 'no_pixel' };
+  if (!pixelId) { await log(env, ev, 'skipped', null, 'no_pixel'); return { sent: false, reason: 'no_pixel' }; }
+  if (ev.internal) { await log(env, ev, 'skipped', null, 'internal_traffic'); return { sent: false, reason: 'internal_traffic' }; }
+  if (ev.user.userAgent && BOT_UA.test(ev.user.userAgent)) { await log(env, ev, 'skipped', null, 'bot'); return { sent: false, reason: 'bot' }; }
+  const s = await getSettings(env);
   const version = env.META_GRAPH_VERSION || 'v21.0';
-  const res = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(pixelId)}/events?access_token=${encodeURIComponent(env.META_CAPI_TOKEN!)}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(await buildPayload(ev)),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(pixelId)}/events?access_token=${encodeURIComponent(env.META_CAPI_TOKEN!)}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(await buildPayload(ev, s.meta_test_event_code)),
+    });
+  } catch (e) {
+    await log(env, ev, 'failed', null, `network: ${String(e)}`);
+    return { sent: false, reason: 'network' };
+  }
   if (!res.ok) {
-    console.error('CAPI error', ev.name, res.status, (await res.text()).slice(0, 300));
+    const text = (await res.text()).slice(0, 300);
+    console.error('CAPI error', ev.name, res.status, text);
+    await log(env, ev, 'failed', res.status, text);
     return { sent: false, reason: `http_${res.status}` };
   }
+  await log(env, ev, 'sent', res.status, s.meta_test_event_code ? `test:${s.meta_test_event_code}` : '');
   return { sent: true };
 }
 
@@ -107,6 +133,7 @@ export interface PaidOrderForCapi {
   fbc: string;
   source_url: string;
   gateway: string | null;
+  is_internal?: number;
 }
 
 /**
@@ -119,6 +146,7 @@ export async function sendPurchaseIfPaid(env: Env, pixelId: string, order: PaidO
   if (order.payment_status !== 'paid') return { sent: false, reason: 'not_paid' };
   if (env.PAYMENT_MODE !== 'live') return { sent: false, reason: 'sandbox_payment' };
   if (order.purchase_sent_at) return { sent: false, reason: 'already_sent' };
+  if (order.is_internal) return { sent: false, reason: 'internal_traffic' };
   const claimed = await env.DB.prepare("UPDATE orders SET purchase_sent_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND purchase_sent_at IS NULL AND payment_status = 'paid'")
     .bind(order.id).run();
   if (!claimed.meta.changes) return { sent: false, reason: 'already_sent' };

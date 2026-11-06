@@ -130,3 +130,9 @@ dialog.confirm::backdrop { background: rgba(5,3,20,.6); }
 .login form { width: min(400px, 100%); display: grid; gap: .8rem; }
 .draft { border: 1px dashed rgba(245,158,11,.6); background: rgba(245,158,11,.06); }
 .help h2 { margin-top: 1.2rem; } .help li { margin-bottom: .3rem; }
+.media-btns { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; margin-top: .4rem; }
+.thumbs img { object-fit: cover; }
+.note-bad { border-color: rgba(239,68,68,.5); background: rgba(239,68,68,.08); }
+.note-warn { border-color: rgba(245,158,11,.5); background: rgba(245,158,11,.08); }
+.note-info { border-color: rgba(99,102,241,.45); background: rgba(99,102,241,.08); }
+.thumb-sm { width: 96px; height: 60px; object-fit: cover; object-position: top; border-radius: 6px; border: 1px solid var(--border); }

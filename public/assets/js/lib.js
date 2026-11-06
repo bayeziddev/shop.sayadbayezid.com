@@ -63,9 +63,11 @@ export function attribution() {
   const a = readAttr();
   const last = a.last || a.first || {};
   // Attribution older than 28 days is dropped (Meta's default click window is 7 days; we keep a little longer for reports).
-  if (last.at && Date.now() - last.at > 28 * 86400000) return { source_url: location.href };
+  // Owner's own browser (?sb_internal=1) or an automated test: the server keeps it out of ad platforms and reports.
+  const internal = !!window.SB_NO_TRACK;
+  if (last.at && Date.now() - last.at > 28 * 86400000) return { source_url: location.href, internal };
   const cookie = (n) => (document.cookie.match(new RegExp('(?:^|; )' + n + '=([^;]*)')) || [])[1] || '';
-  return { ...last, fbp: decodeURIComponent(cookie('_fbp')), fbc: decodeURIComponent(cookie('_fbc')), source_url: last.source_url || location.href };
+  return { ...last, fbp: decodeURIComponent(cookie('_fbp')), fbc: decodeURIComponent(cookie('_fbc')), source_url: last.source_url || location.href, internal };
 }
 
 /* ---- Forms ---- */

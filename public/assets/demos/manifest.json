@@ -1,0 +1,147 @@
+{
+  "cwb-gaming": [
+    "cover",
+    "header",
+    "section",
+    "footer",
+    "mobile",
+    "admin",
+    "sidebar"
+  ],
+  "gadget-market": [
+    "cover",
+    "header",
+    "section",
+    "footer",
+    "mobile",
+    "product",
+    "checkout",
+    "admin",
+    "sidebar"
+  ],
+  "lks-attire": [
+    "cover",
+    "header",
+    "section",
+    "footer",
+    "mobile",
+    "product",
+    "checkout",
+    "admin",
+    "sidebar"
+  ],
+  "prakriti-herbal": [
+    "cover",
+    "header",
+    "section",
+    "footer",
+    "mobile",
+    "product",
+    "checkout",
+    "admin",
+    "sidebar"
+  ],
+  "sidra-glow-studio": [
+    "cover",
+    "header",
+    "section",
+    "footer",
+    "mobile",
+    "product",
+    "checkout",
+    "admin",
+    "sidebar"
+  ],
+  "sidra-jewellery": [
+    "cover",
+    "header",
+    "section",
+    "footer",
+    "mobile",
+    "product",
+    "checkout",
+    "admin",
+    "sidebar"
+  ],
+  "zamil-shop-bd": [
+    "cover",
+    "header",
+    "section",
+    "footer",
+    "mobile",
+    "product",
+    "checkout",
+    "admin",
+    "sidebar"
+  ],
+  "veloura-atelier": [
+    "cover",
+    "header",
+    "section",
+    "footer",
+    "mobile",
+    "checkout",
+    "admin",
+    "sidebar"
+  ],
+  "smartgadget-wholesale": [
+    "cover",
+    "header",
+    "section",
+    "footer",
+    "mobile",
+    "product",
+    "checkout",
+    "admin",
+    "sidebar"
+  ],
+  "sidra-noor-fashion": [
+    "cover",
+    "header",
+    "section",
+    "footer",
+    "mobile",
+    "checkout",
+    "admin"
+  ],
+  "sidra-clothing": [
+    "cover",
+    "header",
+    "section",
+    "footer",
+    "mobile",
+    "product",
+    "checkout",
+    "admin",
+    "sidebar"
+  ],
+  "bootstrap-fashion": [
+    "cover",
+    "header",
+    "section",
+    "footer",
+    "mobile",
+    "product",
+    "checkout",
+    "admin",
+    "sidebar"
+  ],
+  "smartgen-commerce-os": [
+    "cover",
+    "header",
+    "section",
+    "mobile"
+  ],
+  "northstar-admin": [
+    "cover",
+    "sidebar",
+    "mobile",
+    "section"
+  ],
+  "rinova-admin": [
+    "cover",
+    "sidebar",
+    "mobile",
+    "section"
+  ]
+}

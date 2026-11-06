@@ -8,10 +8,33 @@ export interface SiteSettings {
   contact_email: string;
   contact_address: string;
   business_hours: string;
+  support_email: string;
+  /** WhatsApp number with country code (8801…) — used for the lead box hand-off with a pre-filled message. */
+  whatsapp_number: string;
+  /** Optional WhatsApp short link (wa.me/message/…) shown as the general "chat on WhatsApp" link. */
+  whatsapp_link: string;
+  facebook_page: string;
+  map_url: string;
+  /** Where new-lead alert emails go (comma separated). Needs RESEND_API_KEY + EMAIL_FROM. */
+  lead_alert_emails: string;
+  /** Optional booking page (Calendly / Google Calendar appointment) offered after the lead box. */
+  booking_url: string;
+  lead_box_enabled: boolean;
+  /** Seconds on the site before the lead box opens by itself (first visit only). */
+  lead_box_delay: number;
+  /** On phones, open WhatsApp with the visitor's answers right after they submit. */
+  lead_box_auto_whatsapp: boolean;
+  lead_box_title: string;
   meta_pixel_id: string;
   ga4_id: string;
   gtm_id: string;
   clarity_id: string;
+  /** GA4 is configured inside the GTM container → don't also load gtag.js (avoids double-counted page views). */
+  ga4_via_gtm: boolean;
+  /** Meta Events Manager → Test events code. While set, server events appear under "Test events". Clear it after testing. */
+  meta_test_event_code: string;
+  /** "কেন আমরা সেরা" — one point per line: শিরোনাম | বিবরণ */
+  why_us: string;
   pay_sslcommerz_enabled: boolean;
   pay_stripe_enabled: boolean;
   pay_bank_enabled: boolean;
@@ -40,10 +63,24 @@ export const SETTINGS_DEFAULTS: SiteSettings = {
   contact_email: '',
   contact_address: '',
   business_hours: '',
+  support_email: '',
+  whatsapp_number: '',
+  whatsapp_link: '',
+  facebook_page: '',
+  map_url: '',
+  lead_alert_emails: '',
+  booking_url: '',
+  lead_box_enabled: true,
+  lead_box_delay: 10,
+  lead_box_auto_whatsapp: true,
+  lead_box_title: 'আপনার ব্যবসার জন্য কেমন ওয়েবসাইট চান?',
   meta_pixel_id: '',
   ga4_id: '',
   gtm_id: '',
   clarity_id: '',
+  ga4_via_gtm: false,
+  meta_test_event_code: '',
+  why_us: '',
   pay_sslcommerz_enabled: true,
   pay_stripe_enabled: false,
   pay_bank_enabled: true,

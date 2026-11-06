@@ -91,3 +91,72 @@ export async function notifyStatusChange(env: Env, order: NotifiableOrder, statu
 export async function notifyAdminEmail(env: Env, subject: string, text: string) {
   if (env.ADMIN_ALERT_EMAIL) await sendEmail(env, { to: { email: env.ADMIN_ALERT_EMAIL }, subject, text });
 }
+
+/* ---------------- Instant new-lead alerts (team-facing) ---------------- */
+
+export interface LeadAlert {
+  id: number;
+  name: string;
+  phone: string;
+  source: string;
+  sourceLabel: string;
+  answers: [string, string][];
+  message: string;
+  campaign: string;
+  pageUrl: string;
+  internal: boolean;
+}
+
+/** Plain-text summary used by every alert channel. Includes a one-tap WhatsApp link to the lead, so follow-up takes seconds. */
+export function leadAlertText(l: LeadAlert, adminUrl: string): string {
+  const wa = `https://wa.me/${normalizeBdPhone(l.phone) || l.phone.replace(/\D/g, '')}`;
+  return [
+    `${l.internal ? '🧪 টেস্ট লিড (আপনার নিজের ব্রাউজার)' : '🔔 নতুন লিড'} — ${l.sourceLabel}`,
+    `নাম: ${l.name}`,
+    `ফোন/হোয়াটসঅ্যাপ: ${l.phone}`,
+    ...l.answers.map(([k, v]) => `${k}: ${v}`),
+    l.message ? `বার্তা: ${l.message}` : '',
+    l.campaign ? `ক্যাম্পেইন: ${l.campaign}` : '',
+    l.pageUrl ? `পেজ: ${l.pageUrl}` : '',
+    `হোয়াটসঅ্যাপে উত্তর দিন: ${wa}`,
+    `অ্যাডমিনে দেখুন: ${adminUrl}`,
+  ].filter(Boolean).join('\n');
+}
+
+async function postJson(url: string, body: unknown): Promise<{ ok: boolean; status: number }> {
+  const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).catch(() => null);
+  return { ok: !!r?.ok, status: r?.status ?? 0 };
+}
+
+/**
+ * Fan a new lead out to every configured team channel at once (each is optional and logged):
+ * - email via Resend to the "lead alert emails" setting (+ ADMIN_ALERT_EMAIL)
+ * - Telegram bot (TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID)
+ * - any webhook (LEAD_WEBHOOK_URL): Discord / Slack get their native format, anything else gets JSON.
+ */
+export async function alertNewLead(env: Env, l: LeadAlert, adminUrl: string): Promise<void> {
+  const s = await getSettings(env);
+  const text = leadAlertText(l, adminUrl);
+  const subject = `${l.internal ? '[টেস্ট] ' : ''}নতুন লিড: ${l.name} (${l.sourceLabel})`;
+  const tasks: Promise<unknown>[] = [];
+
+  const emails = [...new Set([...(s.lead_alert_emails || '').split(','), env.ADMIN_ALERT_EMAIL || ''].map((x) => x.trim().toLowerCase()).filter((x) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x)))].slice(0, 5);
+  for (const to of emails) tasks.push(sendEmail(env, { to: { email: to }, subject, text, leadId: l.id }));
+
+  if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
+    tasks.push(
+      postJson(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, { chat_id: env.TELEGRAM_CHAT_ID, text, disable_web_page_preview: true })
+        .then((r) => log(env, 'telegram', String(env.TELEGRAM_CHAT_ID), subject, r.ok ? 'sent' : 'failed', r.ok ? '' : `http_${r.status}`, undefined, l.id)),
+    );
+  }
+  if (env.LEAD_WEBHOOK_URL && /^https:\/\//.test(env.LEAD_WEBHOOK_URL)) {
+    const u = env.LEAD_WEBHOOK_URL;
+    const body = /discord(app)?\.com\/api\/webhooks/.test(u)
+      ? { content: text.slice(0, 1900) }
+      : /hooks\.slack\.com/.test(u)
+        ? { text }
+        : { event: 'lead.created', text, lead: { id: l.id, name: l.name, phone: l.phone, source: l.source, answers: Object.fromEntries(l.answers), message: l.message, campaign: l.campaign, page_url: l.pageUrl, internal: l.internal }, admin_url: adminUrl };
+    tasks.push(postJson(u, body).then((r) => log(env, 'webhook', new URL(u).host, subject, r.ok ? 'sent' : 'failed', r.ok ? '' : `http_${r.status}`, undefined, l.id)));
+  }
+  await Promise.allSettled(tasks);
+}

@@ -5,7 +5,27 @@ import { fail } from '../../lib/http';
 import { hashPassword } from '../../lib/crypto';
 import { ROLES } from '../../../../shared/status';
 import { revokeAllSessionsFor } from '../../lib/auth';
-import { nowIso } from '../../lib/util';
+import { nowIso, parseJson } from '../../lib/util';
+import { mediaSrc, isHttpUrl } from '../../../../shared/media';
+
+const URL_OR_EMPTY = /^(https?:\/\/\S+)?$/;
+/** Images / cover / video accept an uploaded file (R2 key), a site path (/assets/…) or any https link. */
+function checkMedia(v: unknown, label: string, field: string) {
+  if (v === undefined || v === null || v === '') return;
+  if (!mediaSrc(String(v))) fail(422, `“${label}” — আপলোড করা ফাইল বা https:// লিংক দিন`, field);
+}
+function checkImages(v: unknown, label: string, field: string) {
+  if (v === undefined) return;
+  const arr = parseJson<unknown[]>(String(v), []);
+  if (!Array.isArray(arr) || arr.length > 30) fail(422, `“${label}” সর্বোচ্চ ৩০টি ছবি`, field);
+  arr.forEach((x) => checkMedia(x, label, field));
+}
+function checkLinks(v: unknown, field: string) {
+  if (v === undefined) return;
+  const arr = parseJson<{ label?: unknown; url?: unknown }[]>(String(v), []);
+  if (!Array.isArray(arr) || arr.length > 6) fail(422, 'সর্বোচ্চ ৬টি অতিরিক্ত ডেমো লিংক', field);
+  for (const l of arr) if (!l || typeof l.url !== 'string' || !isHttpUrl(l.url)) fail(422, 'প্রতিটি ডেমো লিংক https:// দিয়ে শুরু হবে', field);
+}
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const CODE = /^[A-Za-z0-9_-]{3,40}$/;
@@ -36,7 +56,7 @@ export const packagesDef: ResourceDef = {
     { name: 'description', type: 'text', max: 8000, default: '', label: 'বিস্তারিত বিবরণ' },
     { name: 'base_price', type: 'int', required: true, min: 0, label: 'মূল দাম' },
     { name: 'delivery_days', type: 'int', default: 7, min: 1, label: 'ডেলিভারির দিন' },
-    { name: 'demo_url', type: 'text', max: 500, default: '', pattern: /^(https?:\/\/\S+)?$/, label: 'লাইভ ডেমো লিংক' },
+    { name: 'demo_url', type: 'text', max: 500, default: '', pattern: URL_OR_EMPTY, label: 'লাইভ ডেমো লিংক' },
     { name: 'demo_video_key', type: 'text', max: 300, default: null, label: 'ডেমো ভিডিও' },
     { name: 'images', type: 'json', default: '[]', max: 4000, label: 'ছবি' },
     { name: 'features', type: 'json', default: '[]', max: 8000, label: 'ফিচার তালিকা' },
@@ -44,7 +64,60 @@ export const packagesDef: ResourceDef = {
     { name: 'is_featured', type: 'bool', default: 0, label: 'হোমপেজে দেখান' },
     { name: 'sort_order', type: 'int', default: 0, label: 'ক্রম' },
     { name: 'ai_draft', type: 'json', default: null, max: 12000, label: 'এআই খসড়া' },
+    { name: 'cover_image', type: 'text', max: 500, default: '', label: 'কভার ছবি' },
+    { name: 'video_url', type: 'text', max: 500, default: '', label: 'ভিডিও' },
+    { name: 'solution', type: 'text', max: 3000, default: '', label: 'সমাধান' },
+    { name: 'benefits', type: 'json', default: '[]', max: 6000, label: 'ক্লায়েন্টের লাভ' },
+    { name: 'why_us', type: 'json', default: '[]', max: 6000, label: 'কেন আমরা' },
+    { name: 'demo_links', type: 'json', default: '[]', max: 3000, label: 'অতিরিক্ত ডেমো লিংক' },
+    { name: 'demo_login', type: 'text', max: 300, default: '', label: 'ডেমো লগইন তথ্য' },
   ],
+  beforeSave: (_c, d) => {
+    checkMedia(d.cover_image, 'কভার ছবি', 'cover_image');
+    checkImages(d.images, 'স্ক্রিনশট', 'images');
+    checkLinks(d.demo_links, 'demo_links');
+    if (d.video_url && !isHttpUrl(String(d.video_url)) && !mediaSrc(String(d.video_url))) fail(422, 'ভিডিওর জন্য ইউটিউব/ফেসবুক/ভিমিও/ড্রাইভ লিংক দিন অথবা ফাইল আপলোড করুন', 'video_url');
+  },
+};
+
+export const portfolioDef: ResourceDef = {
+  table: 'portfolio', entity: 'portfolio', writePerm: 'catalog.write', hasUpdatedAt: true, searchCols: ['title', 'client_name'], filterCols: ['category_id', 'is_active', 'is_featured'], orderBy: 'sort_order, id DESC',
+  fields: [
+    { name: 'title', type: 'text', required: true, max: 150, label: 'সাইটের নাম' },
+    { name: 'client_name', type: 'text', max: 120, default: '', label: 'ক্লায়েন্ট' },
+    { name: 'category_id', type: 'int', default: null, label: 'ক্যাটাগরি' },
+    { name: 'package_id', type: 'int', default: null, label: 'প্যাকেজ' },
+    { name: 'live_url', type: 'text', max: 500, default: '', pattern: URL_OR_EMPTY, label: 'লাইভ সাইটের লিংক' },
+    { name: 'cover_image', type: 'text', max: 500, default: '', label: 'কভার ছবি' },
+    { name: 'images', type: 'json', default: '[]', max: 4000, label: 'ছবি' },
+    { name: 'video_url', type: 'text', max: 500, default: '', label: 'ভিডিও' },
+    { name: 'summary', type: 'text', max: 1000, default: '', label: 'কী বানিয়েছি' },
+    { name: 'result', type: 'text', max: 500, default: '', label: 'ফলাফল' },
+    { name: 'testimonial', type: 'text', max: 1000, default: '', label: 'ক্লায়েন্টের মন্তব্য' },
+    { name: 'delivered_at', type: 'datetime', default: null, label: 'ডেলিভারির তারিখ' },
+    { name: 'is_featured', type: 'bool', default: 0, label: 'হোমপেজে দেখান' },
+    { name: 'is_active', type: 'bool', default: 1, label: 'সক্রিয়' },
+    { name: 'sort_order', type: 'int', default: 0, label: 'ক্রম' },
+  ],
+  beforeSave: (_c, d) => {
+    checkMedia(d.cover_image, 'কভার ছবি', 'cover_image');
+    checkImages(d.images, 'ছবি', 'images');
+  },
+};
+
+export const designsDef: ResourceDef = {
+  table: 'design_samples', entity: 'design_sample', writePerm: 'catalog.write', hasUpdatedAt: true, searchCols: ['title', 'note'], filterCols: ['kind', 'package_id', 'is_active'], orderBy: 'sort_order, id',
+  fields: [
+    { name: 'kind', type: 'enum', values: ['hero', 'header', 'footer', 'checkout', 'product', 'sidebar', 'dashboard', 'mobile', 'section', 'other'], required: true, label: 'ধরন' },
+    { name: 'title', type: 'text', required: true, max: 150, label: 'শিরোনাম' },
+    { name: 'image', type: 'text', required: true, max: 500, label: 'ছবি' },
+    { name: 'package_id', type: 'int', default: null, label: 'প্যাকেজ' },
+    { name: 'demo_url', type: 'text', max: 500, default: '', pattern: URL_OR_EMPTY, label: 'লাইভ ডেমো লিংক' },
+    { name: 'note', type: 'text', max: 300, default: '', label: 'ছোট নোট' },
+    { name: 'is_active', type: 'bool', default: 1, label: 'সক্রিয়' },
+    { name: 'sort_order', type: 'int', default: 0, label: 'ক্রম' },
+  ],
+  beforeSave: (_c, d) => checkMedia(d.image, 'ছবি', 'image'),
 };
 
 export const addonsDef: ResourceDef = {
@@ -210,4 +283,6 @@ export function registerResources(app: Hono<AppBindings>) {
   registerCrud(app, '/reviews', reviewsDef);
   registerCrud(app, '/landing-pages', landingDef);
   registerCrud(app, '/staff', staffDef);
+  registerCrud(app, '/portfolio', portfolioDef);
+  registerCrud(app, '/designs', designsDef);
 }

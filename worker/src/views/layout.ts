@@ -23,8 +23,31 @@ export interface PageCtx {
   ogImage?: string;
 }
 
+/** Absolute URL for share images: uploads live on the Worker, everything else on the public site. */
+function absUrl(env: Env, src: string): string {
+  if (/^https?:\/\//.test(src)) return src;
+  return `${src.startsWith('/media/') ? env.SITE_URL.replace(/\/$/, '') : publicOrigin(env)}${src}`;
+}
+
 export function logoSvg(size = 36): Raw {
   return raw(`<svg class="logo-mark" width="${size}" height="${size}" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs><rect x="2" y="2" width="44" height="44" rx="13" fill="url(#lg)"/><path d="M18 15 9.5 24 18 33M30 15l8.5 9L30 33" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M26.5 13 21.5 35" stroke="#fff" stroke-opacity=".75" stroke-width="3" stroke-linecap="round"/></svg>`);
+}
+
+const hostOf = (u: string) => { try { return new URL(u).host; } catch { return ''; } };
+
+/** Pages where the lead box may open by itself (never on checkout, order, portal, campaign landing or quiz pages). */
+const LEADBOX_AUTO: PageCtx['pageType'][] = ['home', 'category', 'package', 'static'];
+
+function leadBoxConfig(ctx: PageCtx) {
+  const s = ctx.settings;
+  return {
+    auto: LEADBOX_AUTO.includes(ctx.pageType) && !ctx.noindex && !ctx.hideChrome,
+    delay: Math.max(3, Math.min(300, Number(s.lead_box_delay) || 10)),
+    title: s.lead_box_title || 'আপনার ব্যবসার জন্য কেমন ওয়েবসাইট চান?',
+    brand: s.brand_name,
+    autoWhatsapp: !!s.lead_box_auto_whatsapp,
+    hours: s.business_hours,
+  };
 }
 
 function trackingConfig(ctx: PageCtx) {
@@ -36,6 +59,9 @@ function trackingConfig(ctx: PageCtx) {
     ga4: prod ? s.ga4_id : '',
     gtm: prod ? s.gtm_id : '',
     clarity: prod ? s.clarity_id : '',
+    ga4ViaGtm: !!s.ga4_via_gtm,
+    // GA4 cross-domain measurement between the public storefront and the Worker (payments, order pages).
+    linkDomains: [...new Set([hostOf(publicOrigin(ctx.env)), hostOf(ctx.env.SITE_URL)].filter(Boolean))],
     pageEvent: ctx.pageEvent || null,
     purchase: prod && ctx.env.PAYMENT_MODE === 'live' ? ctx.purchaseEvent || null : null,
     landingPageId: ctx.landingPageId || null,
@@ -63,7 +89,7 @@ ${ctx.noindex ? raw('<meta name="robots" content="noindex, nofollow">') : ''}
 <meta property="og:description" content="${desc}">
 <meta property="og:url" content="${canonical}">
 <meta property="og:locale" content="bn_BD">
-${ctx.ogImage ? html`<meta property="og:image" content="${ctx.env.SITE_URL}${ctx.ogImage}">` : ''}
+${ctx.ogImage ? html`<meta property="og:image" content="${absUrl(ctx.env, ctx.ogImage)}">` : ''}
 ${isSplit(ctx.env) ? html`<meta name="sb-api-base" content="${ctx.env.SITE_URL.replace(/\/$/, '')}">` : ''}
 <meta name="theme-color" content="#0b0a1f" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f6f6fb" media="(prefers-color-scheme: light)">
@@ -74,6 +100,7 @@ ${isSplit(ctx.env) ? html`<meta name="sb-api-base" content="${ctx.env.SITE_URL.r
 <link rel="stylesheet" href="/assets/css/site.css">
 <script src="/assets/js/theme.js"></script>
 ${jsonScript('track-config', trackingConfig(ctx))}
+${ctx.settings.lead_box_enabled ? jsonScript('leadbox-config', leadBoxConfig(ctx)) : ''}
 <script src="/assets/js/track.js" defer></script>
 <script src="/assets/js/app.js" type="module"></script>
 </head>
@@ -100,14 +127,16 @@ function header(ctx: PageCtx): Raw {
   <div class="container nav">
     <a class="brand" href="/">${logoSvg()}<span>${s.brand_name}</span></a>
     <nav class="nav-links" id="nav-links" aria-label="প্রধান মেনু">
-      ${link('/', 'হোম')}
-      ${link('/#categories', 'ক্যাটাগরি')}
-      ${link('/quiz', 'কোন প্যাকেজ আমার জন্য?')}
+      ${link('/packages', 'সব প্যাকেজ')}
+      ${link('/designs', 'ডিজাইন গ্যালারি')}
+      ${link('/portfolio', 'সফল ডেলিভারি')}
+      ${link('/quiz', 'কোনটা নেব?')}
       ${link('/faq', 'প্রশ্নোত্তর')}
       ${link('/contact', 'যোগাযোগ')}
       ${link('/account', 'আমার অর্ডার')}
     </nav>
     <div class="nav-actions">
+      ${ctx.settings.lead_box_enabled ? html`<button type="button" class="btn btn-primary btn-sm nav-cta" data-leadbox-open data-leadbox-from="header">ফ্রি পরামর্শ</button>` : ''}
       <button class="icon-btn" data-theme-toggle aria-label="থিম পরিবর্তন করুন"><span class="i-sun">☀</span><span class="i-moon">☾</span></button>
       <a class="icon-btn cart-btn" href="/checkout" aria-label="কার্ট"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6h15l-1.5 9h-12z"/><path d="M6 6 5 3H2"/><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/></svg><span class="cart-count" data-cart-count hidden>০</span></a>
       <button class="icon-btn menu-btn" aria-controls="nav-links" aria-expanded="false" data-menu-toggle aria-label="মেনু">☰</button>
@@ -124,16 +153,31 @@ function footer(ctx: PageCtx): Raw {
     <div>
       <a class="brand" href="/">${logoSvg(30)}<span>${s.brand_name}</span></a>
       <p class="muted">${s.brand_tagline}</p>
+      ${contactBlock(s)}
     </div>
-    <div><h4>সেবা</h4><a href="/#categories">সব ক্যাটাগরি</a><a href="/quote">কাস্টম কোটেশন</a><a href="/quiz">প্যাকেজ বাছাই কুইজ</a></div>
+    <div><h4>সেবা</h4><a href="/packages">সব রেডি ওয়েবসাইট</a><a href="/designs">ডিজাইন গ্যালারি</a><a href="/portfolio">সফল ডেলিভারি</a><a href="/quote">ফ্রি কোটেশন</a><a href="/quiz">প্যাকেজ বাছাই কুইজ</a></div>
     <div><h4>সহায়তা</h4><a href="/faq">প্রশ্নোত্তর</a><a href="/account">অর্ডারের অবস্থা</a><a href="/contact">যোগাযোগ</a><a href="/about">আমাদের সম্পর্কে</a></div>
     <div><h4>নীতিমালা</h4><a href="/refund-policy">রিফান্ড নীতি</a><a href="/terms">শর্তাবলি</a><a href="/privacy">গোপনীয়তা নীতি</a></div>
   </div>
   <div class="container footer-bottom">
     <span>© ${y} ${s.brand_name}</span>
-    <span class="muted small">এই সাইটে বিজ্ঞাপনের ফলাফল মাপতে কুকি ব্যবহৃত হয় — <a href="/privacy">বিস্তারিত</a></span>
+    <span class="muted small">এই সাইটে বিজ্ঞাপনের ফলাফল মাপতে কুকি ব্যবহৃত হয় — <a href="/privacy">বিস্তারিত</a> · <a href="${ctx.env.SITE_URL.replace(/\/$/, '')}/admin/" rel="nofollow">টিম লগইন</a></span>
   </div>
 </footer>`;
+}
+
+/** Footer contact list: WhatsApp, phone, email, Facebook, address with map. Only what is filled in admin. */
+function contactBlock(s: PageCtx['settings']): Raw {
+  const wa = s.whatsapp_link || (s.whatsapp_number ? `https://wa.me/${s.whatsapp_number.replace(/\D/g, '')}` : '');
+  const fb = s.facebook_page ? (s.facebook_page.startsWith('http') ? s.facebook_page : `https://facebook.com/${s.facebook_page}`) : '';
+  return html`<ul class="contact-list">
+    ${wa ? html`<li><a href="${safeUrl(wa)}" target="_blank" rel="noopener" data-contact-click="whatsapp">💬 হোয়াটসঅ্যাপ${s.contact_phone ? html` · ${s.contact_phone}` : ''}</a></li>` : ''}
+    ${s.contact_phone ? html`<li><a href="tel:${s.contact_phone.replace(/[^\d+]/g, '')}">📞 ${s.contact_phone}</a></li>` : ''}
+    ${s.contact_email ? html`<li><a href="mailto:${s.contact_email}">✉️ ${s.contact_email}</a></li>` : ''}
+    ${s.support_email ? html`<li><a href="mailto:${s.support_email}">🛟 ${s.support_email}</a></li>` : ''}
+    ${fb ? html`<li><a href="${safeUrl(fb)}" target="_blank" rel="noopener">📘 facebook.com/${s.facebook_page.replace(/^https?:\/\/(www\.)?facebook\.com\//, '')}</a></li>` : ''}
+    ${s.contact_address ? html`<li>${s.map_url ? html`<a href="${safeUrl(s.map_url)}" target="_blank" rel="noopener">📍 ${s.contact_address}</a>` : html`📍 ${s.contact_address}`}</li>` : ''}
+  </ul>`;
 }
 
 function miniFooter(ctx: PageCtx): Raw {

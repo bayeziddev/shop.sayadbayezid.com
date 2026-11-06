@@ -12,6 +12,8 @@ export interface Attribution {
   landing_page_id: number | null;
   referral_code: string;
   source_url: string;
+  /** Sent from the owner's own browser (?sb_internal=1) or an automated test: kept out of ad platforms and reports. */
+  internal: boolean;
 }
 
 /** Sanitise attribution sent by the browser (captured from URL params on first/last touch). */
@@ -36,5 +38,6 @@ export function readAttribution(raw: unknown, cookieHeader = ''): Attribution {
     landing_page_id: toInt(a.landing_page_id, 0) || null,
     referral_code: clampStr(a.ref, 40).toUpperCase(),
     source_url: clampStr(a.source_url, 1000),
+    internal: a.internal === true || a.internal === 1 || a.internal === '1',
   };
 }

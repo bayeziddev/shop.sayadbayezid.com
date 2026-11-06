@@ -6,7 +6,8 @@ import { permissionsFor } from '../../lib/rbac';
 import { hashPassword, verifyPassword, decryptJson } from '../../lib/crypto';
 import { rateLimit } from '../../lib/ratelimit';
 import { audit } from '../../lib/audit';
-import { clampStr, clientIp, nowIso, parseJson, safeEqual, toInt, randomToken, taka } from '../../lib/util';
+import { clampStr, clientIp, nowIso, parseJson, safeEqual, toInt, randomToken, taka, publicOrigin } from '../../lib/util';
+import { sendMetaEvent } from '../../lib/meta-capi';
 import { getSettings, saveSettings, SETTINGS_DEFAULTS, type SiteSettings } from '../../lib/settings';
 import { registerResources } from './resources';
 import { listRows, toCsv, csvResponse, type ResourceDef } from './crud';
@@ -493,7 +494,7 @@ admin.post('/packages/:id/discard-draft', requirePerm('catalog.write'), async (c
 });
 
 /* ---------------- Settings ---------------- */
-admin.get('/settings', async (c) => ok(c, { settings: await getSettings(c.env), env: { appEnv: c.env.APP_ENV, paymentMode: c.env.PAYMENT_MODE, siteUrl: c.env.SITE_URL } }));
+admin.get('/settings', async (c) => ok(c, { settings: await getSettings(c.env), env: { appEnv: c.env.APP_ENV, paymentMode: c.env.PAYMENT_MODE, siteUrl: c.env.SITE_URL, publicOrigin: publicOrigin(c.env) } }));
 admin.put('/settings', requirePerm('settings.write'), async (c) => {
   const b = await readJson<Record<string, unknown>>(c);
   const patch: Record<string, unknown> = {};
@@ -508,6 +509,13 @@ admin.put('/settings', requirePerm('settings.write'), async (c) => {
   if (typeof patch.ga4_id === 'string' && patch.ga4_id && !/^G-[A-Z0-9]{4,15}$/.test(patch.ga4_id)) fail(422, 'জিএ৪ আইডি G- দিয়ে শুরু হবে');
   if (typeof patch.gtm_id === 'string' && patch.gtm_id && !/^GTM-[A-Z0-9]{4,12}$/.test(patch.gtm_id)) fail(422, 'জিটিএম আইডি GTM- দিয়ে শুরু হবে');
   if (typeof patch.clarity_id === 'string' && patch.clarity_id && !/^[a-z0-9]{6,20}$/.test(patch.clarity_id)) fail(422, 'ক্ল্যারিটি আইডি সঠিক নয়');
+  for (const k of ['booking_url', 'whatsapp_link', 'map_url'] as const) {
+    if (typeof patch[k] === 'string' && patch[k] && !/^https:\/\/\S+$/.test(patch[k] as string)) fail(422, 'লিংক https:// দিয়ে শুরু হবে', k);
+  }
+  if (typeof patch.whatsapp_number === 'string') patch.whatsapp_number = (patch.whatsapp_number as string).replace(/[^\d]/g, '').replace(/^0/, '880');
+  if (typeof patch.lead_alert_emails === 'string' && (patch.lead_alert_emails as string).split(',').map((x) => x.trim()).filter(Boolean).some((x) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x))) fail(422, 'সঠিক ইমেইল দিন (কমা দিয়ে আলাদা করুন)', 'lead_alert_emails');
+  if (typeof patch.lead_box_delay === 'number' && (patch.lead_box_delay < 3 || patch.lead_box_delay > 300)) fail(422, 'সময় ৩ থেকে ৩০০ সেকেন্ডের মধ্যে দিন', 'lead_box_delay');
+  if (typeof patch.meta_test_event_code === 'string' && patch.meta_test_event_code && !/^TEST\w{2,30}$/.test(patch.meta_test_event_code)) fail(422, 'টেস্ট ইভেন্ট কোড TEST দিয়ে শুরু হবে');
   await saveSettings(c.env, patch as Partial<SiteSettings>);
   await audit(c.env, c.get('admin').id, 'update', 'settings', null, { keys: Object.keys(patch) }, clientIp(c.req.raw));
   return ok(c, { saved: true });
@@ -533,24 +541,64 @@ admin.get('/reports', async (c) => {
   const to = c.req.query('to') ? new Date(new Date(c.req.query('to')!).getTime() + 86_400_000).toISOString() : new Date(Date.now() + 60_000).toISOString();
   const db = c.env.DB;
   const [summary, byCampaign, byLanding, byPackage, byMethod, leadsBySource, funnel, referrals] = await db.batch([
-    db.prepare(`SELECT COUNT(*) AS orders, SUM(payment_status='paid') AS paid_orders, COALESCE(SUM(CASE WHEN payment_status='paid' THEN paid_amount END),0) AS revenue, COALESCE(AVG(CASE WHEN payment_status='paid' THEN paid_amount END),0) AS aov FROM orders WHERE created_at >= ? AND created_at < ?`).bind(from, to),
+    db.prepare(`SELECT COUNT(*) AS orders, SUM(payment_status='paid') AS paid_orders, COALESCE(SUM(CASE WHEN payment_status='paid' THEN paid_amount END),0) AS revenue, COALESCE(AVG(CASE WHEN payment_status='paid' THEN paid_amount END),0) AS aov FROM orders WHERE is_internal = 0 AND created_at >= ? AND created_at < ?`).bind(from, to),
     db.prepare(`SELECT COALESCE(NULLIF(utm_source,''),'(সরাসরি)') AS source, COALESCE(NULLIF(utm_campaign,''),'—') AS campaign, COALESCE(NULLIF(utm_content,''),'—') AS content,
                   COUNT(*) AS orders, SUM(payment_status='paid') AS paid, COALESCE(SUM(CASE WHEN payment_status='paid' THEN paid_amount END),0) AS revenue,
-                  (SELECT COUNT(*) FROM leads l WHERE COALESCE(NULLIF(l.utm_campaign,''),'—') = COALESCE(NULLIF(o.utm_campaign,''),'—') AND COALESCE(NULLIF(l.utm_content,''),'—') = COALESCE(NULLIF(o.utm_content,''),'—') AND l.created_at >= ? AND l.created_at < ?) AS leads
-                FROM orders o WHERE created_at >= ? AND created_at < ? GROUP BY source, campaign, content ORDER BY revenue DESC LIMIT 100`).bind(from, to, from, to),
+                  (SELECT COUNT(*) FROM leads l WHERE l.is_internal = 0 AND COALESCE(NULLIF(l.utm_campaign,''),'—') = COALESCE(NULLIF(o.utm_campaign,''),'—') AND COALESCE(NULLIF(l.utm_content,''),'—') = COALESCE(NULLIF(o.utm_content,''),'—') AND l.created_at >= ? AND l.created_at < ?) AS leads
+                FROM orders o WHERE o.is_internal = 0 AND created_at >= ? AND created_at < ? GROUP BY source, campaign, content ORDER BY revenue DESC LIMIT 100`).bind(from, to, from, to),
     db.prepare(`SELECT lp.id, lp.title, lp.slug, lp.status,
-                  (SELECT COUNT(*) FROM leads l WHERE l.landing_page_id = lp.id AND l.created_at >= ?1 AND l.created_at < ?2) AS leads,
-                  (SELECT COUNT(*) FROM orders o WHERE o.landing_page_id = lp.id AND o.created_at >= ?1 AND o.created_at < ?2) AS orders,
-                  (SELECT COUNT(*) FROM orders o WHERE o.landing_page_id = lp.id AND o.payment_status='paid' AND o.created_at >= ?1 AND o.created_at < ?2) AS paid,
-                  (SELECT COALESCE(SUM(paid_amount),0) FROM orders o WHERE o.landing_page_id = lp.id AND o.payment_status='paid' AND o.created_at >= ?1 AND o.created_at < ?2) AS revenue
+                  (SELECT COUNT(*) FROM leads l WHERE l.is_internal = 0 AND l.landing_page_id = lp.id AND l.created_at >= ?1 AND l.created_at < ?2) AS leads,
+                  (SELECT COUNT(*) FROM orders o WHERE o.is_internal = 0 AND o.landing_page_id = lp.id AND o.created_at >= ?1 AND o.created_at < ?2) AS orders,
+                  (SELECT COUNT(*) FROM orders o WHERE o.is_internal = 0 AND o.landing_page_id = lp.id AND o.payment_status='paid' AND o.created_at >= ?1 AND o.created_at < ?2) AS paid,
+                  (SELECT COALESCE(SUM(paid_amount),0) FROM orders o WHERE o.is_internal = 0 AND o.landing_page_id = lp.id AND o.payment_status='paid' AND o.created_at >= ?1 AND o.created_at < ?2) AS revenue
                 FROM landing_pages lp ORDER BY revenue DESC, leads DESC`).bind(from, to),
-    db.prepare(`SELECT i.package_name, COUNT(*) AS sold, SUM(i.total) AS revenue FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.payment_status='paid' AND o.created_at >= ? AND o.created_at < ? GROUP BY i.package_id ORDER BY revenue DESC`).bind(from, to),
-    db.prepare(`SELECT payment_method, COUNT(*) AS orders, SUM(payment_status='paid') AS paid FROM orders WHERE created_at >= ? AND created_at < ? GROUP BY payment_method`).bind(from, to),
-    db.prepare(`SELECT source, COUNT(*) AS leads, SUM(status='won') AS won FROM leads WHERE created_at >= ? AND created_at < ? GROUP BY source`).bind(from, to),
-    db.prepare(`SELECT project_status, COUNT(*) AS n FROM orders WHERE created_at >= ? AND created_at < ? GROUP BY project_status`).bind(from, to),
+    db.prepare(`SELECT i.package_name, COUNT(*) AS sold, SUM(i.total) AS revenue FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.is_internal = 0 AND o.payment_status='paid' AND o.created_at >= ? AND o.created_at < ? GROUP BY i.package_id ORDER BY revenue DESC`).bind(from, to),
+    db.prepare(`SELECT payment_method, COUNT(*) AS orders, SUM(payment_status='paid') AS paid FROM orders WHERE is_internal = 0 AND created_at >= ? AND created_at < ? GROUP BY payment_method`).bind(from, to),
+    db.prepare(`SELECT source, COUNT(*) AS leads, SUM(status='won') AS won FROM leads WHERE is_internal = 0 AND created_at >= ? AND created_at < ? GROUP BY source`).bind(from, to),
+    db.prepare(`SELECT project_status, COUNT(*) AS n FROM orders WHERE is_internal = 0 AND created_at >= ? AND created_at < ? GROUP BY project_status`).bind(from, to),
     db.prepare(`SELECT c.code, c.description, c.used_count FROM coupons c WHERE c.referrer_order_id IS NOT NULL AND c.used_count > 0 ORDER BY c.used_count DESC LIMIT 50`),
   ]);
   return ok(c, { from, to, summary: summary.results[0], byCampaign: byCampaign.results, byLanding: byLanding.results, byPackage: byPackage.results, byMethod: byMethod.results, leadsBySource: leadsBySource.results, funnel: funnel.results, referrals: referrals.results, statusLabels: PROJECT_STATUS_BN });
+});
+
+/* ---------------- Tracking diagnostics (Pixel / CAPI / GA4 / GTM) ---------------- */
+admin.get('/tracking', async (c) => {
+  const s = await getSettings(c.env);
+  const e = c.env;
+  const since7 = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const since30 = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const db = e.DB;
+  const [stats, recent, internal] = await db.batch([
+    db.prepare(`SELECT event, status, COUNT(*) AS n, MAX(created_at) AS last_at FROM tracking_log WHERE created_at >= ? GROUP BY event, status ORDER BY event, status`).bind(since7),
+    db.prepare(`SELECT event, event_id, status, http_status, detail, created_at FROM tracking_log ORDER BY id DESC LIMIT 60`),
+    db.prepare(`SELECT (SELECT COUNT(*) FROM orders WHERE is_internal = 1 AND created_at >= ?1) AS orders, (SELECT COUNT(*) FROM leads WHERE is_internal = 1 AND created_at >= ?1) AS leads`).bind(since30),
+  ]);
+  const warnings: { level: 'bad' | 'warn' | 'info'; text: string }[] = [];
+  if (e.APP_ENV !== 'production') warnings.push({ level: 'info', text: 'এটি প্রোডাকশন নয় — এখানে কোনো ট্যাগ লোড হয় না এবং মেটাতে কিছু পাঠানো হয় না।' });
+  if (!s.meta_pixel_id) warnings.push({ level: 'bad', text: 'মেটা পিক্সেল আইডি দেওয়া হয়নি।' });
+  if (!e.META_CAPI_TOKEN) warnings.push({ level: 'bad', text: 'কনভার্সন এপিআই টোকেন (META_CAPI_TOKEN) নেই — সার্ভার থেকে ইভেন্ট যাচ্ছে না, শুধু ব্রাউজার পিক্সেল চলছে।' });
+  if (s.ga4_id && s.gtm_id && !s.ga4_via_gtm) warnings.push({ level: 'warn', text: 'জিএ৪ ও জিটিএম দুটোই চালু। আপনার জিটিএম কন্টেইনারে যদি একই জিএ৪ ট্যাগ থাকে, প্রতিটি ভিজিট দুবার গোনা হবে — সেক্ষেত্রে সিস্টেম সেটিংসে “জিএ৪ জিটিএম-এর ভেতর থেকে চলে” চালু করুন।' });
+  if (e.PAYMENT_MODE !== 'live') warnings.push({ level: 'info', text: 'পেমেন্ট এখন স্যান্ডবক্স মোডে — তাই কোনো “পারচেজ” ইভেন্ট পাঠানো হয় না (ঠিক এটাই হওয়া উচিত)। লাইভ পেমেন্ট চালু হলে আসল পেমেন্টেই কেবল পারচেজ যাবে।' });
+  if (s.meta_test_event_code) warnings.push({ level: 'warn', text: `টেস্ট ইভেন্ট কোড (${s.meta_test_event_code}) চালু — সার্ভারের সব ইভেন্ট এখন শুধু ইভেন্টস ম্যানেজারের “Test events”-এ যাচ্ছে, বিজ্ঞাপনে গোনা হচ্ছে না। পরীক্ষা শেষে কোডটি মুছে দিন।` });
+  return ok(c, {
+    config: {
+      appEnv: e.APP_ENV, paymentMode: e.PAYMENT_MODE, pixelId: s.meta_pixel_id, capiToken: !!e.META_CAPI_TOKEN, ga4: s.ga4_id, gtm: s.gtm_id, ga4ViaGtm: s.ga4_via_gtm,
+      clarity: s.clarity_id, testEventCode: s.meta_test_event_code, publicOrigin: publicOrigin(e), workerOrigin: e.SITE_URL.replace(/\/$/, ''),
+    },
+    warnings, stats: stats.results, recent: recent.results, internal: internal.results[0],
+  });
+});
+
+/** Send one PageView through the Conversions API with the Test Events code, to prove the token works. Never a Purchase. */
+admin.post('/tracking/test-event', requirePerm('settings.write'), async (c) => {
+  const s = await getSettings(c.env);
+  if (!s.meta_test_event_code) fail(422, 'আগে সিস্টেম সেটিংসে মেটার টেস্ট ইভেন্ট কোড দিন (ইভেন্টস ম্যানেজার → Test events থেকে পাবেন)');
+  const eventId = `test_${randomToken(10)}`;
+  const r = await sendMetaEvent(c.env, s.meta_pixel_id, {
+    name: 'PageView', eventId, sourceUrl: `${publicOrigin(c.env)}/`,
+    user: { ip: clientIp(c.req.raw), userAgent: 'Mozilla/5.0 (admin tracking check)' },
+  });
+  return ok(c, { ...r, eventId });
 });
 
 /* ---------------- Notifications, activity, lookups ---------------- */

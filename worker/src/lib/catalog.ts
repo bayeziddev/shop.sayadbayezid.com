@@ -1,6 +1,7 @@
 import type { Env } from '../env';
 import type { CouponInput, OfferInput, PricingPackage } from '../../../shared/pricing';
 import { parseJson } from './util';
+import { mediaSrc, parseVideo, titledLines, isHttpUrl } from '../../../shared/media';
 
 export interface CategoryRow {
   id: number; slug: string; name: string; description: string; icon: string; image_key: string | null;
@@ -11,6 +12,7 @@ export interface PackageRow {
   description: string; base_price: number; delivery_days: number; demo_url: string; demo_video_key: string | null;
   images: string; features: string; status: 'active' | 'inactive' | 'coming_soon'; is_featured: number; sort_order: number;
   ai_draft: string | null; category_slug?: string; category_name?: string;
+  cover_image?: string; video_url?: string; solution?: string; benefits?: string; why_us?: string; demo_links?: string; demo_login?: string;
 }
 export interface AddonRow { id: number; package_id: number; name: string; description: string; price_delta: number; max_quantity: number; is_active: number; sort_order: number }
 export interface OfferRow { id: number; scope: 'category' | 'package'; scope_id: number; title: string; discount_type: 'percent' | 'flat'; discount_value: number; starts_at: string | null; ends_at: string | null; show_timer: number; is_active: number }
@@ -65,11 +67,22 @@ export async function findCoupon(env: Env, code: string | null | undefined): Pro
 }
 
 export function mediaUrl(key: string | null | undefined): string {
-  return key ? `/media/${key.split('/').map(encodeURIComponent).join('/')}` : '';
+  return mediaSrc(key);
+}
+
+/** Extra demo buttons (admin panel, seller panel…). Only http(s) links survive. */
+export function demoLinks(json: string | undefined): { label: string; url: string }[] {
+  return parseJson<{ label?: string; url?: string }[]>(json, [])
+    .filter((l) => l && typeof l.url === 'string' && isHttpUrl(l.url))
+    .map((l) => ({ label: String(l.label || 'ডেমো').slice(0, 60), url: String(l.url) }))
+    .slice(0, 6);
 }
 
 /** Public JSON shape for a package (never exposes ai_draft or internal fields). */
 export function publicPackage(p: PackageRow, addons: AddonRow[], offers: OfferRow[]) {
+  const images = parseJson<string[]>(p.images, []).map(mediaSrc).filter(Boolean);
+  const video = parseVideo(p.video_url || p.demo_video_key);
+  const cover = mediaSrc(p.cover_image) || images[0] || (video?.kind === 'youtube' ? video.thumb : '');
   return {
     id: p.id,
     categoryId: p.category_id,
@@ -83,9 +96,17 @@ export function publicPackage(p: PackageRow, addons: AddonRow[], offers: OfferRo
     basePrice: p.base_price,
     deliveryDays: p.delivery_days,
     demoUrl: p.demo_url,
-    demoVideo: mediaUrl(p.demo_video_key),
-    images: parseJson<string[]>(p.images, []).map(mediaUrl),
+    demoLinks: demoLinks(p.demo_links),
+    demoLogin: p.demo_login || '',
+    cover,
+    /** Inline autoplay loop only for uploaded/direct video files (YouTube etc. open in a player on click). */
+    demoVideo: video?.kind === 'file' ? video.src : '',
+    video,
+    images,
     features: parseJson<string[]>(p.features, []),
+    solution: p.solution || '',
+    benefits: titledLines(parseJson<string[]>(p.benefits, [])),
+    whyUs: titledLines(parseJson<string[]>(p.why_us, [])),
     status: p.status,
     addons: addons.map((a) => ({ id: a.id, name: a.name, description: a.description, priceDelta: a.price_delta, maxQuantity: a.max_quantity })),
     offers: offers.map(offerFromRow),

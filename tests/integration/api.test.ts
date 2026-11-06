@@ -69,23 +69,23 @@ describe('catalog (package-list fixture)', () => {
 
 describe('server-side price verification', () => {
   it('server quote equals the client-side configurator total', async () => {
-    const p = await packageBySlug('fashion-premium');
+    const p = await packageBySlug('gadget-market');
     const items = await fixtureItems();
     const client = priceLine({ id: p.id, categoryId: p.categoryId, basePrice: p.basePrice, addons: p.addons, offers: p.offers }, items[0], Date.now());
     const r = await call('/api/pricing/quote', json({ items }));
     expect(r.body.data.total).toBe(client.total);
-    expect(r.body.data.total).toBe(25000 + 2 * 1000 + 5000);
+    expect(r.body.data.total).toBe(10000 + 2 * 1000 + 5000);
   });
 
   it('ignores a tampered client total and refuses to charge a different amount', async () => {
     const r = await placeOrder({ expectedTotal: 100 });
     expect(r.status).toBe(409);
     expect(r.body.code).toBe('price_changed');
-    expect(r.body.data.total).toBe(32000);
+    expect(r.body.data.total).toBe(17000);
   });
 
   it('expired offers stop discounting', async () => {
-    const p = await packageBySlug('fashion-premium');
+    const p = await packageBySlug('gadget-market');
     await env.DB.prepare("INSERT INTO offers (scope, scope_id, discount_type, discount_value, ends_at) VALUES ('package', ?, 'percent', 50, ?)").bind(p.id, new Date(Date.now() - 1000).toISOString()).run();
     const r = await call('/api/pricing/quote', json({ items: [{ packageId: p.id, addons: [] }] }));
     expect(r.body.data.offerDiscount).toBe(0);
@@ -108,7 +108,7 @@ describe('order → payment → requirements (create-order fixture)', () => {
     expect(skip.status).toBe(422);
 
     await call(`/api/orders/${orderNumber}/manual-payment`, json({ token, trx_id: 'TRX-9981', sender: 'ব্যাংক' }));
-    const verify = await call('/api/admin/orders/1/verify-payment', json({ amount: 32000, confirm: true }, h));
+    const verify = await call('/api/admin/orders/1/verify-payment', json({ amount: 17000, confirm: true }, h));
     expect(verify.status).toBe(200);
 
     const order = await env.DB.prepare('SELECT * FROM orders WHERE id = 1').first<any>();
@@ -126,7 +126,7 @@ describe('order → payment → requirements (create-order fixture)', () => {
 
     const o2 = await placeOrder();
     await call(`/api/orders/${o2.body.data.orderNumber}/manual-payment`, json({ token: o2.body.data.token, trx_id: 'TRX-9982', sender: 'ব্যাংক' }));
-    await call('/api/admin/orders/2/verify-payment', json({ amount: 32000, confirm: true }, h));
+    await call('/api/admin/orders/2/verify-payment', json({ amount: 17000, confirm: true }, h));
     const inv2 = await env.DB.prepare('SELECT invoice_number FROM orders WHERE id = 2').first<any>();
     expect(inv2.invoice_number).toMatch(/-000002$/);
 
@@ -163,11 +163,11 @@ describe('admin auth & RBAC (admin-login fixture)', () => {
 
   it('AI drafts are never published until a human approves', async () => {
     const h = await adminSession();
-    const p = await packageBySlug('blog-basic');
+    const p = await packageBySlug('sidra-clothing');
     await env.DB.prepare('UPDATE packages SET ai_draft = ? WHERE id = ?').bind(JSON.stringify({ title: 'এআই শিরোনাম', shortDescription: 'ক', description: 'খ' }), p.id).run();
-    expect((await packageBySlug('blog-basic')).name).toBe(p.name);
+    expect((await packageBySlug('sidra-clothing')).name).toBe(p.name);
     await call(`/api/admin/packages/${p.id}/approve-draft`, json({}, h));
-    expect((await packageBySlug('blog-basic')).name).toBe('এআই শিরোনাম');
+    expect((await packageBySlug('sidra-clothing')).name).toBe('এআই শিরোনাম');
   });
 });
 

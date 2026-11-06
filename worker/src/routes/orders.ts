@@ -5,7 +5,7 @@ import { getSettings, type SiteSettings } from '../lib/settings';
 import { findCoupon, loadPricingPackages } from '../lib/catalog';
 import { priceCart, PricingError, COUPON_ERROR_BN, type LineSelection, type CartPrice } from '../../../shared/pricing';
 import { rateLimit } from '../lib/ratelimit';
-import { clampStr, clientIp, isEmail, normalizeBdPhone, randomToken, taka, toInt, bnDigits, nowIso } from '../lib/util';
+import { clampStr, clientIp, isEmail, normalizeBdPhone, randomToken, taka, toInt, bnDigits, nowIso, publicOrigin } from '../lib/util';
 import { readAttribution } from '../lib/attribution';
 import { confirmPayment, getOrder, getOrderByNumber, getOrderItems, newOrderNumber, type OrderRow } from '../lib/orders';
 import { portalToken, verifyPortalToken } from '../lib/portal-token';
@@ -129,12 +129,12 @@ orders.post('/api/orders', async (c) => {
   const ua = clampStr(c.req.header('user-agent'), 400);
   const ins = await c.env.DB.prepare(
     `INSERT INTO orders (order_number, customer_name, customer_phone, customer_email, business_name, payment_method, subtotal, offer_discount, coupon_id, coupon_code, coupon_discount, total,
-       initiate_event_id, purchase_event_id, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, fbp, fbc, landing_page_id, referral_code, client_ip, user_agent, source_url)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+       initiate_event_id, purchase_event_id, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, fbp, fbc, landing_page_id, referral_code, client_ip, user_agent, source_url, is_internal)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
   ).bind(
     orderNo, name, phone, email, business, method, price.subtotal, price.offerDiscount, price.couponId, price.couponCode, price.couponDiscount, price.total,
     initiateId, purchaseId, attr.utm_source, attr.utm_medium, attr.utm_campaign, attr.utm_content, attr.utm_term, attr.fbclid, attr.fbp, attr.fbc, attr.landing_page_id,
-    attr.referral_code || (price.couponCode?.startsWith('REF') ? price.couponCode : ''), ip, ua, attr.source_url || `${c.env.SITE_URL}/checkout`,
+    attr.referral_code || (price.couponCode?.startsWith('REF') ? price.couponCode : ''), ip, ua, attr.source_url || `${publicOrigin(c.env)}/checkout`, attr.internal ? 1 : 0,
   ).first<{ id: number }>();
   const orderId = ins!.id;
   await c.env.DB.batch([
@@ -150,6 +150,7 @@ orders.post('/api/orders', async (c) => {
   // InitiateCheckout: the order now really exists server-side → fire CAPI; browser fires the same event_id.
   c.executionCtx.waitUntil(Promise.all([
     sendMetaEvent(c.env, s.meta_pixel_id, {
+      internal: attr.internal,
       name: 'InitiateCheckout', eventId: initiateId, sourceUrl: order.source_url,
       user: { email, phone, firstName: name, ip, userAgent: ua, fbp: attr.fbp, fbc: attr.fbc, externalId: phone },
       customData: { currency: 'BDT', value: price.total, content_ids: price.lines.map((l) => String(l.packageId)), content_type: 'product', num_items: price.lines.length },
