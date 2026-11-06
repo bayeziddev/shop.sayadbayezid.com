@@ -503,7 +503,7 @@ body.has-sticky-cta .chat { bottom: 86px; }
    ========================================================================== */
 .nav-cta { white-space: nowrap; }
 @media (max-width: 520px) { .nav-cta { padding: .4rem .7rem; font-size: .85rem; } }
-.hero-advice { display: inline-block; margin-top: 1rem; background: none; border: 0; padding: 0; cursor: pointer; font: 600 1rem/1.4 var(--font-body); color: #c4b5fd; text-decoration: underline; text-underline-offset: 4px; }
+.hero-advice { display: inline-block; white-space: normal; text-align: left; margin-top: 1rem; background: none; border: 0; padding: 0; cursor: pointer; font: 600 1rem/1.4 var(--font-body); color: #c4b5fd; text-decoration: underline; text-underline-offset: 4px; }
 .contact-list { list-style: none; padding: 0; margin: .8rem 0 0; display: grid; gap: .3rem; font-size: .92rem; }
 .contact-list a { text-decoration: none; color: var(--muted); }
 .contact-list a:hover { color: var(--text); }
@@ -574,3 +574,11 @@ body.has-sticky-cta .chat { bottom: 86px; }
 html.lb-open .chat { display: none; }
 /* Grid items must be allowed to shrink below their content (the thumbnail strip scrolls instead of widening the page). */
 .pkg-layout > *, .pkg-left > *, .pkg-right > *, .feature-split > *, .shots-layout > * { min-width: 0; }
+/* Narrow phones: cards and the hero must shrink to the screen; long emails/links wrap instead of widening the page. */
+.contact-grid > *, .hero-grid > *, .checkout > * { min-width: 0; }
+.kv dd, .contact-list a, .demo-login, .footer-grid a { overflow-wrap: anywhere; }
+h1, h2 { overflow-wrap: break-word; }
+@media (max-width: 380px) {
+  .nav-actions [data-theme-toggle] { display: none; }
+  .nav-cta { padding: .35rem .6rem; font-size: .8rem; }
+}
