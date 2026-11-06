@@ -19,15 +19,14 @@ test('configure → checkout → pay → requirements', async ({ page, browser }
   // 1) Configure
   await page.goto('/package/gadget-market');
   await expect(page.locator('h1')).toContainText('Gadget Market');
-  await page.getByText('এআই চ্যাটবট').click();
-  await page.locator('[data-stepper] [data-step="1"]').first().click();
-  await page.locator('[data-stepper] [data-step="1"]').first().click();
-  await expect(page.locator('[data-cfg="total"]')).toHaveText('৳১৭,০০০');
+  // One fixed price: no add-ons to tick, nothing changes the total.
+  await expect(page.locator('.addons')).toHaveCount(0);
+  await expect(page.locator('[data-cfg="total"]')).toHaveText('৳১২,০০০');
 
   // 2) Checkout — the summary must show the server-verified total, equal to the configurator's.
   await page.locator('[data-order-now]').click();
   await page.waitForURL('**/checkout');
-  await expect(page.locator('[data-summary] .total strong')).toHaveText('৳১৭,০০০');
+  await expect(page.locator('[data-summary] .total strong')).toHaveText('৳১২,০০০');
   await page.fill('input[name=name]', 'পরীক্ষা ক্লায়েন্ট');
   await page.fill('input[name=phone]', '01711000000');
   await page.fill('input[name=email]', 'e2e@example.com');

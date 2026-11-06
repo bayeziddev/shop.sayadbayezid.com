@@ -18,14 +18,17 @@ async function adminSession(): Promise<Record<string, string>> {
   return { cookie: (r.headers.get('set-cookie') || '').split(';')[0], 'x-requested-with': 'admin', origin: BASE };
 }
 
-describe('ready-made demo packages (৳10,000 each)', () => {
-  it('lists every demo product at ৳10,000 with cover, screenshots and extra demo links', async () => {
+describe('ready-made packages (one fixed price: ৳12,000)', () => {
+  it('lists every website at ৳12,000 with a cover, a live demo, A-to-Z features and a screenshot tour — and no add-on surcharges', async () => {
     const r = await call('/api/packages');
-    expect(r.body.data).toHaveLength(15);
+    expect(r.body.data).toHaveLength(16);
     for (const p of r.body.data) {
-      expect(p.basePrice).toBe(10000);
+      expect(p.basePrice, p.slug).toBe(12000);
+      expect(p.addons, p.slug).toEqual([]);
       expect(p.cover).toMatch(/^\/assets\/demos\/[\w-]+\/cover\.webp$/);
-      expect(p.demoUrl).toMatch(/^https:\/\/demu\.sayadbayezid\.com\//);
+      expect(p.demoUrl).toMatch(/^https:\/\/(demu\.sayadbayezid\.com\/|vandarmart\.com$)/);
+      expect(p.featureGroups.length, p.slug).toBeGreaterThan(0);
+      expect(p.tour.length, p.slug).toBeGreaterThan(2);
     }
     const gm = r.body.data.find((p: any) => p.slug === 'gadget-market');
     expect(gm.images.length).toBeGreaterThanOrEqual(4);
@@ -43,7 +46,7 @@ describe('ready-made demo packages (৳10,000 each)', () => {
   it('renders the package page with every section and clear calls to action', async () => {
     const { status, html } = await page('/package/gadget-market');
     expect(status).toBe(200);
-    for (const text of ['এই সাইট আপনার জন্য কী করবে', 'আপনার ব্যবসার লাভ', 'এই প্যাকেজে যা থাকছে', 'সব স্ক্রিনশট', 'কেন আমাদের কাছ থেকে নেবেন', 'ক্লায়েন্ট রিভিউ', 'এখনই অর্ডার করুন', 'লাইভ ডেমো দেখুন', 'অ্যাডমিন প্যানেল ডেমো', 'data-demo-click', 'data-sticky-cta']) {
+    for (const text of ['এই সাইট আপনার জন্য কী করবে', 'আপনার ব্যবসার লাভ', 'এই প্যাকেজে যা থাকছে', 'ফিচার ট্যুর — স্ক্রিনশটে দেখুন', 'কেন আমাদের কাছ থেকে নেবেন', 'ক্লায়েন্ট রিভিউ', 'এখনই অর্ডার করুন', 'লাইভ ডেমো দেখুন', 'অ্যাডমিন প্যানেল ডেমো', 'data-demo-click', 'data-sticky-cta']) {
       expect(html, text).toContain(text);
     }
     expect(html).toContain('og:image" content="https://shop.example.com/assets/demos/gadget-market/cover.webp');
@@ -78,8 +81,10 @@ describe('design gallery & successful deliveries', () => {
     expect(html).toContain('এই ডিজাইনে অর্ডার করুন');
   });
 
-  it('starts the portfolio empty (no invented work) and shows real deliveries added in admin', async () => {
-    expect((await page('/portfolio')).html).toContain('শীঘ্রই এখানে আমাদের ডেলিভারি করা সাইট দেখাবো');
+  it('lists only real deliveries (Vandar Mart to start with) and shows new ones added in admin', async () => {
+    const before = (await page('/portfolio')).html;
+    expect(before).toContain('Vandar Mart');
+    expect((before.match(/class="card work-card"/g) || []).length).toBe(1); // nothing invented
     const h = await adminSession();
     const r = await call('/api/admin/portfolio', json({ title: 'রহিম ফ্যাশন হাউস', client_name: 'রহিম', live_url: 'https://rahim.example.com', cover_image: '/assets/demos/lks-attire/cover.webp', is_featured: 1 }, h));
     expect(r.status).toBe(201);
@@ -172,5 +177,45 @@ describe('contact details & admin on the main domain', () => {
     for (const s of ['https://wa.me/message/TDYG575YENF6F1', 'info@sayadbayezid.com', 'support@sayadbayezid.com', 'facebook.com/bayeziddme', 'https://maps.app.goo.gl/xEWYQwSmQAYAC1DFA', 'আউলিয়াবাদ, কালিহাতী, টাঙ্গাইল', 'http://localhost:8787/admin/']) {
       expect(html, s).toContain(s);
     }
+  });
+});
+
+describe('full details on every package page', () => {
+  it('shows the screenshot tour, A-to-Z features, the common list and the package FAQ — with one fixed price', async () => {
+    const { html } = await page('/package/gadget-market');
+    for (const text of ['ফিচার ট্যুর — স্ক্রিনশটে দেখুন', 'A থেকে Z — সব ফিচার এক জায়গায়', 'অ্যাডমিন প্যানেল — দোকান চালানো', 'প্রতিটি সাইটে যা থাকছে', 'Gadget Market — প্রশ্নোত্তর', 'অ্যাডমিন প্যানেল থেকে আমি নিজে কী কী করতে পারব?', 'মোট দাম — এককালীন', 'কোনো লুকানো খরচ নেই']) {
+      expect(html, text).toContain(text);
+    }
+    expect(html).not.toContain('অ্যাড-অন যোগ করুন');
+    expect(html).toContain('৳১২,০০০');
+  });
+
+  it('adds Vandar Mart with its shop link only, the video tutorial, and lists it as a real delivery', async () => {
+    const p = (await call('/api/packages/vandarmart')).body.data;
+    expect(p.demoUrl).toBe('https://vandarmart.com');
+    expect(p.demoLinks).toEqual([]); // no admin link on the public page
+    expect(p.video.kind).toBe('youtube');
+    expect(p.tour.length).toBe(20);
+    const { html } = await page('/package/vandarmart');
+    expect(html).not.toMatch(/vandarmart\.com\/admin/);
+    const works = (await page('/portfolio')).html;
+    expect(works).toContain('ABS VAI LTD');
+    expect(works).toContain('href="https://vandarmart.com"');
+  });
+
+  it('lets the admin preview frame the site, but no other website', async () => {
+    const { headers } = await page('/');
+    expect(headers.get('content-security-policy')).toContain("frame-ancestors 'self'");
+  });
+
+  it('accepts edits to the A-to-Z groups and the tour from admin, and rejects a bad tour image', async () => {
+    const h = await adminSession();
+    const p = (await call('/api/packages/zamil-shop-bd')).body.data;
+    const ok = await call(`/api/admin/packages/${p.id}`, json({ feature_groups: [{ title: 'নতুন গ্রুপ', items: ['এক', 'দুই'] }], screen_tour: [{ image: 'https://cdn.example.com/x.webp', title: 'নতুন স্ক্রিন', text: 'বিবরণ' }] }, h, 'PUT'));
+    expect(ok.status).toBe(200);
+    const after = (await call('/api/packages/zamil-shop-bd')).body.data;
+    expect(after.featureGroups).toEqual([{ title: 'নতুন গ্রুপ', items: ['এক', 'দুই'] }]);
+    expect(after.tour[0].title).toBe('নতুন স্ক্রিন');
+    expect((await call(`/api/admin/packages/${p.id}`, json({ screen_tour: [{ image: 'javascript:alert(1)', title: 'x' }] }, h, 'PUT'))).status).toBe(422);
   });
 });

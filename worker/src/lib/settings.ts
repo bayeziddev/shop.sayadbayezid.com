@@ -35,6 +35,8 @@ export interface SiteSettings {
   meta_test_event_code: string;
   /** "কেন আমরা সেরা" — one point per line: শিরোনাম | বিবরণ */
   why_us: string;
+  /** "প্রতিটি সাইটে যা থাকছে" — one item per line, shown on every package page. */
+  common_features: string;
   pay_sslcommerz_enabled: boolean;
   pay_stripe_enabled: boolean;
   pay_bank_enabled: boolean;
@@ -81,6 +83,7 @@ export const SETTINGS_DEFAULTS: SiteSettings = {
   ga4_via_gtm: false,
   meta_test_event_code: '',
   why_us: '',
+  common_features: '',
   pay_sslcommerz_enabled: true,
   pay_stripe_enabled: false,
   pay_bank_enabled: true,

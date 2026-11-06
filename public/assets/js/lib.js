@@ -2,7 +2,8 @@
 const BN = '০১২৩৪৫৬৭৮৯';
 export const bn = (v) => String(v).replace(/\d/g, (d) => BN[d]);
 const nf = new Intl.NumberFormat('bn-BD');
-export const taka = (n) => '৳' + nf.format(Math.round(n || 0));
+// bn() afterwards: Safari/iOS formats bn-BD with Latin digits ("৳33,500"), the rest of the site uses Bangla digits.
+export const taka = (n) => '৳' + bn(nf.format(Math.round(n || 0)));
 export const $ = (s, r = document) => r.querySelector(s);
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);

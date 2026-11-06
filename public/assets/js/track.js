@@ -26,7 +26,10 @@
     if (q === '0') localStorage.removeItem('sb_internal');
     internal = localStorage.getItem('sb_internal') === '1';
   } catch (e) {}
-  var automated = navigator.webdriver === true || /HeadlessChrome|bot\/|crawler|spider|\+https?:\/\/|Lighthouse|PageSpeed/i.test(navigator.userAgent);
+  // Shown inside the admin's site preview (an iframe): the owner editing is not a visitor.
+  var framed = false;
+  try { framed = window.top !== window.self; } catch (e) { framed = true; }
+  var automated = framed || navigator.webdriver === true || /HeadlessChrome|bot\/|crawler|spider|\+https?:\/\/|Lighthouse|PageSpeed/i.test(navigator.userAgent);
   w.SB_NO_TRACK = internal || automated;
   var noop = function () {};
   if (w.SB_NO_TRACK) {

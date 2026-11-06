@@ -7,11 +7,11 @@
  *   worker/migrations/0004_demo_products.sql was generated from this file once (migrations never change
  *   after they are applied; edit packages from the admin panel instead).
  *
- * Every price here is ৳10,000 (the owner's instruction). Prices, delivery days and copy are adjustable
+ * Every price here is ৳12,000 (the owner's instruction). Prices, delivery days and copy are adjustable
  * from Admin → প্যাকেজ.
  */
 export const HUB = 'https://demu.sayadbayezid.com';
-export const PRICE = 10000;
+export const PRICE = 12000; // was 10000 in migration 0004; 0006 set every package to 12000 (owner's latest instruction)
 
 /** New categories (existing ones: fashion, clothing, gadgets, herbal, news, blog). */
 export const NEW_CATEGORIES = [
@@ -418,7 +418,7 @@ export const WHY_US = [
 
 /** Extra site-wide FAQs for the ready-made demo packages. */
 export const DEMO_FAQS = [
-  ['৳১০,০০০ প্যাকেজে কী কী পাবো?', 'ডেমোতে যা দেখছেন তার সবকিছু — স্টোর/মার্কেটপ্লেস এবং অ্যাডমিন প্যানেল — আপনার ব্র্যান্ডের নাম, লোগো, রং, যোগাযোগের তথ্য ও প্রথম পণ্যগুলো বসিয়ে আপনার ডোমেইনে লাইভ করে দেওয়া হবে। প্যাকেজ পেজের “এই প্যাকেজে যা থাকছে” অংশে বিস্তারিত তালিকা আছে।'],
+  ['৳১২,০০০ প্যাকেজে কী কী পাবো?', 'ডেমোতে যা দেখছেন তার সবকিছু — স্টোর/মার্কেটপ্লেস এবং অ্যাডমিন প্যানেল — আপনার ব্র্যান্ডের নাম, লোগো, রং, যোগাযোগের তথ্য ও প্রথম পণ্যগুলো বসিয়ে আপনার ডোমেইনে লাইভ করে দেওয়া হবে। প্যাকেজ পেজের “এই প্যাকেজে যা থাকছে” অংশে বিস্তারিত তালিকা আছে।'],
   ['ডেমোর ডিজাইন কি আমার মতো করে বদলানো যাবে?', 'হ্যাঁ। রং, লোগো, ফন্ট, ব্যানার ও লেখা আপনার ব্র্যান্ড অনুযায়ী বদলে দেওয়া হয়। বড় ধরনের নতুন ফিচার বা আলাদা পেজ লাগলে “কোটেশন নিন” ফর্মে জানান — আলাদা মূল্য জানিয়ে দেব।'],
   ['ডেমোতে যে অর্ডার আর কাস্টমার দেখছি সেগুলো কি আসল?', 'না। ডেমোর সব পণ্য, অর্ডার, কাস্টমার ও হিসাব কাল্পনিক — শুধু দেখানোর জন্য। আপনার সাইট খালি অবস্থায় আপনার নিজের পণ্য দিয়ে শুরু হবে।'],
   ['বিকাশ/নগদ বা কার্ড পেমেন্ট যুক্ত করা যাবে?', 'যাবে। আপনার মার্চেন্ট অ্যাকাউন্ট (যেমন বিকাশ মার্চেন্ট বা এসএসএলকমার্জ) থাকলে আমরা গেটওয়ে যুক্ত করে দিই। গেটওয়ের নিজস্ব চার্জ গেটওয়ে কোম্পানি নেয়।'],

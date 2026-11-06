@@ -136,3 +136,16 @@ dialog.confirm::backdrop { background: rgba(5,3,20,.6); }
 .note-warn { border-color: rgba(245,158,11,.5); background: rgba(245,158,11,.08); }
 .note-info { border-color: rgba(99,102,241,.45); background: rgba(99,102,241,.08); }
 .thumb-sm { width: 96px; height: 60px; object-fit: cover; object-position: top; border-radius: 6px; border: 1px solid var(--border); }
+/* Site preview & edit mode */
+.prev-bar { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin: .6rem 0; }
+.prev-bar select { max-width: 360px; }
+.prev-bar .seg { display: flex; gap: .3rem; }
+.prev-stage { height: calc(100vh - 230px); min-height: 520px; overflow: hidden; background: repeating-conic-gradient(var(--surface-2) 0 25%, transparent 0 50%) 0 0 / 22px 22px; border: 1px solid var(--border); border-radius: 14px; padding: 12px; display: flex; justify-content: center; }
+.prev-frame { transform-origin: top center; flex: 0 0 auto; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 50px -20px rgba(0,0,0,.6); background: #fff; }
+.prev-frame iframe { width: 100%; height: 100%; border: 0; display: block; }
+/* Feature tour editor */
+.tour-preview { display: flex; gap: .5rem; overflow-x: auto; margin: .4rem 0; }
+.tour-preview figure { margin: 0; flex: 0 0 120px; }
+.tour-preview img { width: 120px; height: 75px; object-fit: cover; object-position: top; border-radius: 6px; border: 1px solid var(--border); }
+.tour-preview figcaption { font-size: .75rem; color: var(--muted); }
+textarea.mono-ish { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }

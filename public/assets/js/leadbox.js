@@ -275,6 +275,9 @@ function close() {
 /** Auto-open once: first visit, after `delay` seconds of visible time, when nothing else is in the way. */
 function scheduleAuto() {
   const st = store.get();
+  let framed = false;
+  try { framed = window.top !== window.self; } catch { framed = true; }
+  if (framed) return; // never pops up inside the admin's site preview
   if (!CFG.auto || st.done || (st.dismissed && Date.now() - st.dismissed < 3 * DAY)) return;
   let left = CFG.delay * 1000;
   let last = Date.now();

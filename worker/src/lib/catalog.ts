@@ -13,6 +13,24 @@ export interface PackageRow {
   images: string; features: string; status: 'active' | 'inactive' | 'coming_soon'; is_featured: number; sort_order: number;
   ai_draft: string | null; category_slug?: string; category_name?: string;
   cover_image?: string; video_url?: string; solution?: string; benefits?: string; why_us?: string; demo_links?: string; demo_login?: string;
+  feature_groups?: string; screen_tour?: string;
+}
+
+/** "A থেকে Z সব ফিচার": [{title, items[]}] (empty groups/items dropped). */
+export function featureGroups(json: string | undefined): { title: string; items: string[] }[] {
+  return parseJson<{ title?: unknown; items?: unknown }[]>(json, [])
+    .filter((g) => g && typeof g.title === 'string' && Array.isArray(g.items))
+    .map((g) => ({ title: String(g.title).slice(0, 120), items: (g.items as unknown[]).map((i) => String(i).slice(0, 300)).filter(Boolean).slice(0, 40) }))
+    .filter((g) => g.title && g.items.length)
+    .slice(0, 12);
+}
+
+/** Screenshot feature tour: [{image, title, text}] — only entries whose image is an upload, site path or https link. */
+export function screenTour(json: string | undefined): { image: string; title: string; text: string }[] {
+  return parseJson<{ image?: unknown; title?: unknown; text?: unknown }[]>(json, [])
+    .map((t) => ({ image: mediaSrc(String(t?.image || '')), title: String(t?.title || '').slice(0, 120), text: String(t?.text || '').slice(0, 1000) }))
+    .filter((t) => t.image && t.title)
+    .slice(0, 24);
 }
 export interface AddonRow { id: number; package_id: number; name: string; description: string; price_delta: number; max_quantity: number; is_active: number; sort_order: number }
 export interface OfferRow { id: number; scope: 'category' | 'package'; scope_id: number; title: string; discount_type: 'percent' | 'flat'; discount_value: number; starts_at: string | null; ends_at: string | null; show_timer: number; is_active: number }
@@ -107,6 +125,8 @@ export function publicPackage(p: PackageRow, addons: AddonRow[], offers: OfferRo
     solution: p.solution || '',
     benefits: titledLines(parseJson<string[]>(p.benefits, [])),
     whyUs: titledLines(parseJson<string[]>(p.why_us, [])),
+    featureGroups: featureGroups(p.feature_groups),
+    tour: screenTour(p.screen_tour),
     status: p.status,
     addons: addons.map((a) => ({ id: a.id, name: a.name, description: a.description, priceDelta: a.price_delta, maxQuantity: a.max_quantity })),
     offers: offers.map(offerFromRow),

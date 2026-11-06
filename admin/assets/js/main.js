@@ -5,7 +5,7 @@ import * as V from './views.js';
 
 const app = $('#app');
 const NAV = [
-  ['dashboard', 'ড্যাশবোর্ড', '◧'], ['categories', 'ক্যাটাগরি', '▦'], ['packages', 'প্যাকেজ', '◫'], ['designs', 'ডিজাইন গ্যালারি', '▤'], ['portfolio', 'সফল ডেলিভারি', '✓'], ['landing-pages', 'ল্যান্ডিং পেজ', '⬚'], ['tracking', 'ট্র্যাকিং ও বিজ্ঞাপন', '◎'],
+  ['dashboard', 'ড্যাশবোর্ড', '◧'], ['preview', 'সাইট প্রিভিউ ও এডিট', '👁'], ['categories', 'ক্যাটাগরি', '▦'], ['packages', 'প্যাকেজ', '◫'], ['designs', 'ডিজাইন গ্যালারি', '▤'], ['portfolio', 'সফল ডেলিভারি', '✓'], ['landing-pages', 'ল্যান্ডিং পেজ', '⬚'], ['tracking', 'ট্র্যাকিং ও বিজ্ঞাপন', '◎'],
   ['orders', 'অর্ডার / প্রজেক্ট', '🧾'], ['leads', 'লিড', '☏'], ['coupons', 'কুপন', '%'], ['offers', 'ক্যাটাগরি অফার', '⏱'], ['banners', 'ব্যানার / পপআপ', '▭'],
   ['faqs', 'প্রশ্নোত্তর', '?'], ['reviews', 'রিভিউ', '★'], ['chats', 'চ্যাট', '💬'], ['chat-settings', 'চ্যাট সেটিংস', '⚙'], ['ai-settings', 'এআই সেটিংস', '✨'],
   ['reports', 'রিপোর্ট', '📈'], ['staff', 'স্টাফ ও ভূমিকা', '👥'], ['activity', 'অ্যাক্টিভিটি লগ', '≡'], ['settings', 'সিস্টেম সেটিংস', '⚒'], ['help', 'সহায়তা কেন্দ্র', 'ⓘ'],
@@ -250,10 +250,11 @@ async function route() {
     else if (name === 'ai-settings') await V.aiSettingsView(fresh);
     else if (name === 'reports') await V.reportsView(fresh);
     else if (name === 'tracking') await V.trackingView(fresh);
+    else if (name === 'preview') await V.previewView(fresh, new URLSearchParams(query || '').get('path') || '/');
     else if (name === 'settings') await V.settingsView(fresh);
     else if (name === 'help') V.helpView(fresh);
     else if (R[name]) {
-      const cfg = { ...R[name] };
+      const cfg = { ...R[name], ...(id ? { openId: id } : {}) };
       if (name === 'offers' && query) { const cat = new URLSearchParams(query).get('cat'); if (cat) cfg.defaultFilters = { ...cfg.defaultFilters, scope_id: cat }; }
       const reloadLookups = cfg.after;
       if (reloadLookups) { const orig = cfg.toApi; cfg.toApi = (d, r) => { setTimeout(reloadLookups, 300); return orig ? orig(d, r) : d; }; }
