@@ -81,12 +81,17 @@ test('package page: screenshots, demo buttons and a working order button', async
   await page.waitForURL('**/checkout');
 });
 
-test('new pages have no horizontal overflow on phones', async ({ page }) => {
+test('pages have no horizontal overflow, down to small 360px phones', async ({ page }, info) => {
   await page.addInitScript(() => localStorage.setItem('sb_leadbox_v1', JSON.stringify({ done: Date.now() })));
-  for (const path of ['/packages', '/designs', '/portfolio', '/package/sidra-jewellery', '/contact']) {
-    await page.goto(path);
-    // Compare with the real screen width: a too-wide element makes mobile Chrome zoom out and widen innerWidth too.
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - Math.min(window.innerWidth, screen.width));
-    expect(overflow, path).toBeLessThanOrEqual(1);
+  // Mobile also checks a 360px phone: font metrics differ between machines, so leave real headroom.
+  const widths = info.project.name === 'mobile' ? [page.viewportSize()!.width, 360] : [page.viewportSize()!.width];
+  for (const width of widths) {
+    await page.setViewportSize({ width, height: 800 });
+    for (const path of ['/', '/packages', '/designs', '/portfolio', '/package/sidra-jewellery', '/contact', '/checkout']) {
+      await page.goto(path);
+      // Compare with the intended width: a too-wide element makes mobile Chrome zoom out and widen innerWidth too.
+      const overflow = await page.evaluate((w) => document.documentElement.scrollWidth - w, width);
+      expect(overflow, `${path} @ ${width}px`).toBeLessThanOrEqual(1);
+    }
   }
 });
