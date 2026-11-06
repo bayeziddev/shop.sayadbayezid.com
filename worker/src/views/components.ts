@@ -85,7 +85,7 @@ export function packageCard(p: PublicPackage, coupons: CouponRow[], now: number)
   const offer = liveOffer(p, now);
   const cs = couponsFor(p, coupons).slice(0, 1);
   const soon = p.status === 'coming_soon';
-  return html`<article class="card pkg-card ${soon ? 'is-soon' : ''}" data-cat="${p.categorySlug || ''}">
+  return html`<article class="card pkg-card ${soon ? 'is-soon' : ''}" data-cat="${p.categorySlug || ''}" data-edit="package:${p.id}">
   <a href="/package/${p.slug}" class="pkg-media" aria-label="${p.name} — বিস্তারিত দেখুন">${browserFrame(p)}${p.video ? html`<span class="pkg-video-badge">▶ ভিডিও</span>` : ''}</a>
   <div class="pkg-body">
     <div class="pkg-tags"><span class="badge">${p.categoryName || tierLabel(p.tier)}</span>${offer ? offerBadge(offer) : ''}${soon ? html`<span class="badge badge-soon">শীঘ্রই আসছে</span>` : ''}</div>
@@ -148,7 +148,7 @@ export const designKindLabel = (k: string) => DESIGN_KINDS.find(([x]) => x === k
 export function designCard(d: DesignView): Raw {
   const src = mediaSrc(d.image);
   const tall = d.kind === 'mobile' || d.kind === 'sidebar';
-  return html`<figure class="card design-card ${tall ? 'is-tall' : ''} kind-${d.kind}" data-kind="${d.kind}">
+  return html`<figure class="card design-card ${tall ? 'is-tall' : ''} kind-${d.kind}" data-kind="${d.kind}" data-edit="design:${d.id}">
   <button type="button" class="design-shot" data-lightbox="${src}" data-caption="${d.title}" aria-label="${d.title} — বড় করে দেখুন"><img src="${src}" alt="${d.title}" loading="lazy" decoding="async"></button>
   <figcaption>
     <span class="badge">${designKindLabel(d.kind)}</span>
@@ -167,7 +167,7 @@ export interface PortfolioView { id: number; title: string; client_name: string;
 export function portfolioCard(w: PortfolioView): Raw {
   const cover = mediaSrc(w.cover_image);
   const live = safeUrl(w.live_url);
-  return html`<article class="card work-card" data-cat="${w.category_slug || ''}">
+  return html`<article class="card work-card" data-cat="${w.category_slug || ''}" data-edit="portfolio:${w.id}">
   <div class="work-media">${browserFrame({ id: w.id, name: w.title, cover, demoUrl: live })}</div>
   <div class="work-body">
     <div class="pkg-tags">${w.category_name ? html`<span class="badge">${w.category_name}</span>` : ''}<span class="badge badge-verified">✓ ডেলিভারি সম্পন্ন</span></div>

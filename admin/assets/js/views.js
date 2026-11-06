@@ -233,20 +233,22 @@ export async function packageEditor(root, id) {
     { name: 'cover_image', label: 'কভার ছবি (কার্ড ও শেয়ারে দেখায়)', type: 'image' },
     { name: 'images', label: 'স্ক্রিনশট গ্যালারি', type: 'images' },
     { name: 'video_url', label: 'বিস্তারিত ভিডিও — ইউটিউব / ফেসবুক / ভিমিও / গুগল ড্রাইভ লিংক অথবা ফাইল আপলোড', type: 'video' },
+    { name: 'screen_tour', label: 'ফিচার ট্যুর — স্ক্রিনশট ও তার পাশের লেখা', type: 'tour', hint: 'প্রতি লাইনে: ছবির লিংক | শিরোনাম | বিবরণ' },
+    { name: 'feature_groups', label: 'A থেকে Z সব ফিচার', type: 'groups', hint: '# দিয়ে গ্রুপের নাম, তার নিচে প্রতি লাইনে একটি ফিচার' },
     { name: 'is_featured', label: 'হোমপেজে দেখান', type: 'bool' },
     { name: 'sort_order', label: 'ক্রম', type: 'number' },
   ];
   const draft = p.ai_draft ? JSON.parse(p.ai_draft) : null;
   const writable = can('catalog.write');
   root.innerHTML = `
-    <div class="page-head"><h1>${isNew ? 'নতুন প্যাকেজ' : esc(p.name)}</h1><div class="actions"><a class="btn" href="#/packages">← সব প্যাকেজ</a>${!isNew ? `<a class="btn" href="/package/${esc(p.slug)}" target="_blank" rel="noopener">সাইটে দেখুন</a>` : ''}</div></div>
+    <div class="page-head"><h1>${isNew ? 'নতুন প্যাকেজ' : esc(p.name)}</h1><div class="actions"><a class="btn" href="#/packages">← সব প্যাকেজ</a>${!isNew ? `<a class="btn" href="#/preview?path=${encodeURIComponent('/package/' + p.slug)}">👁 প্রিভিউ ও এডিট মোড</a><a class="btn" href="/package/${esc(p.slug)}" target="_blank" rel="noopener">নতুন ট্যাবে দেখুন ↗</a>` : ''}</div></div>
     ${draft ? `<div class="card draft" data-draft><h2>এআই খসড়া — পর্যালোচনা প্রয়োজন</h2><p class="small muted">এটি এখনো সাইটে প্রকাশিত হয়নি। সম্পাদনা করে অনুমোদন দিলে তবেই লাইভ হবে।</p>
       <div class="grid"><label>শিরোনাম<input data-d="name" value="${esc(draft.title)}"></label><label>সংক্ষিপ্ত বিবরণ<textarea data-d="short_description" rows="2">${esc(draft.shortDescription)}</textarea></label><label>বিস্তারিত<textarea data-d="description" rows="6">${esc(draft.description)}</textarea></label></div>
       ${writable ? '<div style="display:flex;gap:.5rem;margin-top:.6rem"><button class="btn primary" data-approve>অনুমোদন দিয়ে প্রকাশ করুন</button><button class="btn danger" data-discard>বাতিল</button></div>' : ''}</div>` : ''}
     <div class="grid" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr);align-items:start">
       <form class="card grid" data-pkg>${fields.map((f) => fieldHtml(f, p[f.name])).join('')}
         ${writable ? `<div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn primary">সংরক্ষণ করুন</button>${can('ai.use') ? '<button class="btn" type="button" data-suggest>✨ এআই দিয়ে শিরোনাম ও বিবরণ সাজেস্ট করুন</button>' : ''}</div>` : ''}</form>
-      <div class="grid">${isNew ? '<div class="card muted">প্রথমে সংরক্ষণ করুন, তারপর অ্যাড-অন ও অফার যোগ করা যাবে।</div>' : '<div class="card" data-addons></div><div class="card" data-offers></div><div class="card"><h3>এই প্যাকেজের প্রশ্নোত্তর</h3><a href="#/faqs">প্রশ্নোত্তর পাতা থেকে “প্যাকেজ” হিসেবে যোগ করুন →</a></div>'}</div>
+      <div class="grid">${isNew ? '<div class="card muted">প্রথমে সংরক্ষণ করুন, তারপর অ্যাড-অন ও অফার যোগ করা যাবে।</div>' : '<div class="card" data-pkg-faqs></div><div class="card" data-addons></div><div class="card" data-offers></div>'}</div>
     </div>`;
   const form = $('[data-pkg]', root);
   bindMedia(form);
@@ -282,8 +284,17 @@ export async function packageEditor(root, id) {
       { name: 'price_delta', label: 'অতিরিক্ত দাম (৳)', type: 'number', min: 0, required: true }, { name: 'max_quantity', label: 'সর্বোচ্চ সংখ্যা (১ = চালু/বন্ধ)', type: 'number', min: 1, default: 1 },
       { name: 'is_active', label: 'সক্রিয়', type: 'bool', default: 1 }, { name: 'sort_order', label: 'ক্রম', type: 'number', default: 0 },
     ];
+    // This package's own FAQs, edited right here (the site-wide ones live under প্রশ্নোত্তর).
+    await listView($('[data-pkg-faqs]', root), {
+      title: 'এই প্যাকেজের প্রশ্নোত্তর', singular: 'প্রশ্ন', endpoint: '/faqs', defaultFilters: { scope: 'package', package_id: id }, search: false, writePerm: 'marketing.write', perPage: 50, titleKey: 'question',
+      intro: 'প্যাকেজ পেজের নিচে দেখায়, তারপর সাইটের সাধারণ প্রশ্নগুলো।',
+      fields: [{ name: 'question', label: 'প্রশ্ন', required: true, max: 300 }, { name: 'answer', label: 'উত্তর', type: 'textarea', required: true }, { name: 'sort_order', label: 'ক্রম', type: 'number', default: 0 }, { name: 'is_active', label: 'সক্রিয়', type: 'bool', default: 1 }],
+      newValues: { is_active: 1, sort_order: 0 }, toApi: (d) => ({ ...d, scope: 'package', package_id: Number(id) }),
+      columns: [{ label: 'প্রশ্ন', render: (f) => `<b>${esc(f.question)}</b><br><span class="small muted">${esc(String(f.answer).slice(0, 90))}</span>` }, { label: '', render: (f) => (f.is_active ? '' : statusPill('বন্ধ', 'bad')) }],
+    });
     await listView($('[data-addons]', root), {
-      title: 'অ্যাড-অন', singular: 'অ্যাড-অন', endpoint: '/addons', defaultFilters: { package_id: id }, search: false, writePerm: 'catalog.write', perPage: 50,
+      title: 'অ্যাড-অন (ঐচ্ছিক)', singular: 'অ্যাড-অন', endpoint: '/addons', defaultFilters: { package_id: id }, search: false, writePerm: 'catalog.write', perPage: 50,
+      intro: 'সক্রিয় অ্যাড-অন থাকলে ক্রেতা বেছে নিলে দাম বাড়ে। সব বন্ধ থাকলে প্যাকেজের দাম স্থির থাকে।',
       fields: addonFields, newValues: { is_active: 1, max_quantity: 1 }, toApi: (d) => ({ ...d, package_id: Number(id) }),
       columns: [{ label: 'নাম', key: 'name' }, { label: 'দাম', render: (a) => '+' + taka(a.price_delta) + (a.max_quantity > 1 ? ` <span class="muted small">(সর্বোচ্চ ${bn(a.max_quantity)})</span>` : '') }, { label: '', render: (a) => (a.is_active ? '' : statusPill('বন্ধ', 'bad')) }],
     });
@@ -492,6 +503,7 @@ export async function settingsView(root) {
     ['যোগাযোগের তথ্য (ফুটার ও যোগাযোগ পেজে দেখায়)', [['whatsapp_number', 'হোয়াটসঅ্যাপ নম্বর (লিড বক্সের পর এই নম্বরে মেসেজ খুলবে)'], ['whatsapp_link', 'হোয়াটসঅ্যাপ শর্ট লিংক (wa.me/message/…)'], ['support_email', 'সাপোর্ট ইমেইল'], ['facebook_page', 'ফেসবুক পেজ ইউজারনেম'], ['map_url', 'গুগল ম্যাপ লিংক']]],
     ['লিড বক্স (প্রথম ভিজিটে ধাপে ধাপে প্রশ্ন)', [['lead_box_enabled', 'লিড বক্স চালু', 'bool'], ['lead_box_delay', 'কত সেকেন্ড পর নিজে থেকে খুলবে', 'number'], ['lead_box_title', 'প্রথম প্রশ্ন'], ['lead_box_auto_whatsapp', 'ফোনে সাবমিটের পর সরাসরি হোয়াটসঅ্যাপ খুলবে', 'bool'], ['booking_url', 'কল বুকিং লিংক (ঐচ্ছিক — Calendly / Google Calendar)']]],
     ['নতুন লিডের সাথে সাথে নোটিফিকেশন', [['lead_alert_emails', 'যে ইমেইলে লিড যাবে (কমা দিয়ে একাধিক)']]],
+    ['প্রতিটি সাইটে যা থাকছে (সব প্যাকেজ পেজে দেখায়)', [['common_features', 'প্রতি লাইনে একটি পয়েন্ট', 'textarea']]],
     ['কেন আমরা সেরা', [['why_us', 'প্রতি লাইনে একটি পয়েন্ট — শিরোনাম | বিবরণ (হোমপেজ ও প্রতিটি প্যাকেজ পেজে দেখায়)', 'textarea']]],
     ['পেমেন্ট', [['pay_sslcommerz_enabled', 'এসএসএলকমার্জ (বিকাশ/নগদ/রকেট/কার্ড) চালু', 'bool'], ['pay_bank_enabled', 'ব্যাংক ট্রান্সফার চালু', 'bool'], ['bank_details', 'ব্যাংকের তথ্য', 'textarea'], ['pay_manual_mfs_enabled', 'ম্যানুয়াল সেন্ড মানি চালু (গেটওয়ে না থাকলে)', 'bool'], ['manual_bkash_number', 'বিকাশ নম্বর'], ['manual_nagad_number', 'নগদ নম্বর'], ['manual_rocket_number', 'রকেট নম্বর'], ['pay_stripe_enabled', 'আন্তর্জাতিক কার্ড (স্ট্রাইপ) চালু', 'bool'], ['usd_rate', '১ ডলার = কত টাকা', 'number']]],
     ['অটোমেশন', [['lead_followup_hours', 'কত ঘণ্টা পর স্বয়ংক্রিয় ফলো-আপ', 'number'], ['lead_followup_max', 'সর্বোচ্চ স্বয়ংক্রিয় ফলো-আপ', 'number'], ['stuck_threshold_days', 'কত দিন একই ধাপে থাকলে সতর্কতা', 'number'], ['referral_enabled', 'রেফারেল প্রোগ্রাম চালু', 'bool'], ['referral_percent', 'রেফারেল ছাড় (%)', 'number']]],
@@ -594,6 +606,91 @@ export async function trackingView(root) {
   $('[data-test-event]', root)?.addEventListener('click', async () => {
     try { const r = await api('/tracking/test-event', { method: 'POST', body: {} }); toast(r.sent ? 'পাঠানো হয়েছে — ইভেন্টস ম্যানেজার › Test events দেখুন' : `পাঠানো যায়নি: ${r.reason}`, !r.sent); trackingView(root); } catch (err) { toast(err.message, true); }
   });
+}
+
+/* ================= Site preview with click-to-edit ================= */
+const DEVICES = [['desktop', '🖥 ডেস্কটপ', 1280], ['tablet', '📱 ট্যাবলেট', 820], ['mobile', '📱 মোবাইল', 390]];
+const EDIT_ROUTES = {
+  package: (id) => `#/packages/${id}`, faqs: (id) => `#/packages/${id}`, design: (id) => `#/designs/${id}`,
+  portfolio: (id) => `#/portfolio/${id}`, category: (id) => `#/categories/${id}`, settings: () => '#/settings',
+};
+const EDIT_CSS = `[data-edit]{outline:2px dashed rgba(139,92,246,.85)!important;outline-offset:3px;cursor:pointer!important;position:relative}
+[data-edit]:hover{outline:3px solid #f59e0b!important}
+[data-edit]::after{content:"✎ এডিট";position:absolute;top:6px;right:6px;z-index:70;background:#8b5cf6;color:#fff;font:700 12px/1.2 system-ui,sans-serif;padding:3px 9px;border-radius:999px;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,.35)}
+[data-edit]:hover::after{background:#f59e0b;color:#1c1205}`;
+
+export async function previewView(root, startPath) {
+  const pkgs = state.lookups.packages || [];
+  const pages = [['/', 'হোমপেজ'], ['/packages', 'সব প্যাকেজ'], ['/designs', 'ডিজাইন গ্যালারি'], ['/portfolio', 'সফল ডেলিভারি'], ['/contact', 'যোগাযোগ'], ['/faq', 'প্রশ্নোত্তর'], ['/about', 'আমাদের সম্পর্কে'],
+    ...pkgs.map((p) => [`/package/${p.slug}`, `প্যাকেজ: ${p.name}`])];
+  const safePath = /^\/[\w\-/]*$/.test(startPath) && !startPath.startsWith('/admin') && !startPath.startsWith('/api') ? startPath : '/';
+  let device = localStorage.getItem('adm_prev_device') || 'desktop';
+  let editMode = localStorage.getItem('adm_prev_edit') !== '0';
+  root.innerHTML = `
+    <div class="page-head"><h1>সাইট প্রিভিউ ও এডিট</h1><div class="actions"><a class="btn" data-open-tab href="${esc(safePath)}" target="_blank" rel="noopener">নতুন ট্যাবে ↗</a></div></div>
+    <p class="muted small">পুরো সাইট এখানে আসল চেহারায় দেখুন। <b>এডিট মোড</b> চালু থাকলে বেগুনি দাগ দেওয়া যেকোনো অংশে চাপ দিন — প্যাকেজ, ডিজাইন, সফল ডেলিভারি, প্রশ্নোত্তর, ক্যাটাগরি বা সাইটের লেখা/যোগাযোগ সেটিংস সাথে সাথে এডিটে খুলবে। এডিট মোড বন্ধ করলে সাধারণ ভিজিটরের মতো ঘুরে দেখা যায়। প্রিভিউতে কোনো পিক্সেল/অ্যানালিটিক্স চলে না।</p>
+    <div class="prev-bar">
+      <select data-page aria-label="পেজ বাছাই">${pages.map(([v, l]) => `<option value="${esc(v)}" ${v === safePath ? 'selected' : ''}>${esc(l)}</option>`).join('')}${pages.some(([v]) => v === safePath) ? '' : `<option value="${esc(safePath)}" selected>${esc(safePath)}</option>`}</select>
+      <div class="seg" role="group" aria-label="স্ক্রিন">${DEVICES.map(([k, l]) => `<button type="button" class="btn sm ${k === device ? 'primary' : ''}" data-device="${k}">${l}</button>`).join('')}</div>
+      <label class="chk"><input type="checkbox" data-edit-mode ${editMode ? 'checked' : ''}> ✎ এডিট মোড</label>
+      <button type="button" class="btn sm" data-reload title="আবার লোড করুন">↻ রিফ্রেশ</button>
+    </div>
+    <div class="prev-stage" data-stage><div class="prev-frame" data-wrap><iframe data-frame title="সাইট প্রিভিউ" src="${esc(safePath)}"></iframe></div></div>`;
+
+  const stage = $('[data-stage]', root);
+  const wrap = $('[data-wrap]', root);
+  const frame = $('[data-frame]', root);
+  const select = $('[data-page]', root);
+  const fit = () => {
+    const w = DEVICES.find(([k]) => k === device)[2];
+    const avail = stage.clientWidth - 24;
+    const scale = Math.min(1, avail / w);
+    const h = Math.max(480, stage.clientHeight - 24);
+    wrap.style.width = `${w}px`;
+    wrap.style.height = `${h / scale}px`;
+    wrap.style.transform = `scale(${scale})`;
+    wrap.style.marginBottom = `${-(h / scale) * (1 - scale)}px`;
+  };
+  const decorate = () => {
+    let doc;
+    try { doc = frame.contentDocument; } catch { return; }
+    if (!doc || !doc.head) return;
+    const path = frame.contentWindow.location.pathname;
+    if ([...select.options].some((o) => o.value === path)) select.value = path;
+    $('[data-open-tab]', root).href = path;
+    let st = doc.getElementById('adm-edit-style');
+    if (editMode && !st) { st = doc.createElement('style'); st.id = 'adm-edit-style'; st.textContent = EDIT_CSS; doc.head.append(st); }
+    if (!editMode && st) st.remove();
+    if (!doc.documentElement.dataset.admBound) {
+      doc.documentElement.dataset.admBound = '1';
+      doc.addEventListener('click', (e) => {
+        if (!editMode) return;
+        const el = e.target.closest('[data-edit]');
+        if (!el) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const [type, id] = el.dataset.edit.split(':');
+        const to = EDIT_ROUTES[type];
+        if (to) location.hash = to(id);
+      }, true);
+    }
+  };
+  frame.addEventListener('load', decorate);
+  select.addEventListener('change', () => { frame.src = select.value; });
+  $('[data-reload]', root).addEventListener('click', () => frame.contentWindow.location.reload());
+  $$('[data-device]', root).forEach((b) => b.addEventListener('click', () => {
+    device = b.dataset.device;
+    localStorage.setItem('adm_prev_device', device);
+    $$('[data-device]', root).forEach((x) => x.classList.toggle('primary', x === b));
+    fit();
+  }));
+  $('[data-edit-mode]', root).addEventListener('change', (e) => {
+    editMode = e.target.checked;
+    localStorage.setItem('adm_prev_edit', editMode ? '1' : '0');
+    decorate();
+  });
+  new ResizeObserver(fit).observe(stage);
+  fit();
 }
 
 /* ================= Help ================= */

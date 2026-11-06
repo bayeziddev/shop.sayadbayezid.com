@@ -1,7 +1,7 @@
 // Admin core: API client, UI primitives, generic CRUD list + slide-over form.
 const BN = '০১২৩৪৫৬৭৮৯';
 export const bn = (v) => String(v ?? '').replace(/\d/g, (d) => BN[d]);
-export const taka = (n) => '৳' + new Intl.NumberFormat('bn-BD').format(Math.round(n || 0));
+export const taka = (n) => '৳' + bn(new Intl.NumberFormat('bn-BD').format(Math.round(n || 0))); // bn(): Safari prints Latin digits for bn-BD
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 export const $ = (s, r = document) => r.querySelector(s);
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -103,6 +103,16 @@ export function fieldHtml(f, v) {
       const arr = Array.isArray(val) ? val : (() => { try { return JSON.parse(val || '[]'); } catch { return []; } })();
       return `<label>${label} <small>(প্রতি লাইনে: লেবেল | https://লিংক)</small><textarea name="${f.name}" rows="${f.rows || 3}" data-links>${esc(arr.map((l) => `${l.label} | ${l.url}`).join('\n'))}</textarea></label>`;
     }
+    case 'groups': {
+      const arr = Array.isArray(val) ? val : (() => { try { return JSON.parse(val || '[]'); } catch { return []; } })();
+      const text = arr.map((g) => [`# ${g.title}`, ...(g.items || []).map((i) => `- ${i}`)].join('\n')).join('\n\n');
+      return `<label>${label}${hint}<textarea name="${f.name}" rows="${f.rows || 14}" class="mono-ish" placeholder="# দোকান — ক্রেতা যা দেখেন&#10;- ক্যাটাগরি ও ফিল্টার&#10;- পণ্যের পেজ&#10;&#10;# অ্যাডমিন প্যানেল&#10;- অর্ডার ম্যানেজমেন্ট">${esc(text)}</textarea></label>`;
+    }
+    case 'tour': {
+      const arr = Array.isArray(val) ? val : (() => { try { return JSON.parse(val || '[]'); } catch { return []; } })();
+      const text = arr.map((t) => `${t.image} | ${t.title} | ${t.text}`).join('\n');
+      return `<div class="tour-field"><label>${label}${hint}<textarea name="${f.name}" rows="${f.rows || 7}" data-tour-input placeholder="/assets/demos/…/checkout.webp | চেকআউট | ফোন যাচাই, ডেলিভারি চার্জ…">${esc(text)}</textarea></label><div class="tour-preview" data-tour-preview>${tourPreview(arr)}</div><small class="muted">ছবির লিংক কপি করতে উপরের “স্ক্রিনশট গ্যালারি”-র ছবিতে ডান-ক্লিক করুন, অথবা যেকোনো https:// লিংক দিন।</small></div>`;
+    }
     default: return `<label>${label}<input type="${f.inputType || 'text'}" name="${f.name}" value="${esc(val)}" ${req} maxlength="${f.max || 500}" ${f.pattern ? `pattern="${f.pattern}"` : ''} ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ''}></label>`;
   }
 }
@@ -122,6 +132,28 @@ export function videoKind(v) {
   return 'বাইরের লিংক — বোতাম হিসেবে দেখাবে';
 }
 
+/** "A থেকে Z" groups: "# title" starts a group, every other non-empty line is an item. */
+export function parseGroups(text) {
+  const out = [];
+  for (const raw of String(text || '').split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith('#')) { out.push({ title: line.replace(/^#+\s*/, ''), items: [] }); continue; }
+    if (!out.length) out.push({ title: 'ফিচার', items: [] });
+    out[out.length - 1].items.push(line.replace(/^[-•*]\s*/, ''));
+  }
+  return out.filter((g) => g.title && g.items.length);
+}
+
+/** Feature tour: "image | title | text" per line. */
+export function parseTour(text) {
+  return String(text || '').split('\n').map((l) => l.split('|').map((x) => x.trim())).filter((p) => p.length >= 2 && p[0] && p[1]).map(([image, title, ...rest]) => ({ image, title, text: rest.join(' | ') }));
+}
+
+function tourPreview(arr) {
+  return arr.map((t) => `<figure><img src="${esc(mediaSrc(t.image))}" alt="" loading="lazy"><figcaption>${esc(t.title)}</figcaption></figure>`).join('');
+}
+
 function mediaThumbs(keys) {
   return keys.filter(Boolean).map((k) => `<figure data-key="${esc(k)}">${/\.(mp4|webm)$/.test(k) ? `<video src="${esc(mediaSrc(k))}" muted></video>` : `<img src="${esc(mediaSrc(k))}" alt="" loading="lazy">`}<button type="button" data-remove-media aria-label="সরান">✕</button></figure>`).join('');
 }
@@ -134,6 +166,11 @@ export function bindMedia(form) {
     form.querySelector(`input[type=hidden][name="${name}"]`).value = box.dataset.multi === '1' ? JSON.stringify(keys) : keys[0] || '';
   };
   form.addEventListener('input', (e) => {
+    if (e.target.matches('[data-tour-input]')) {
+      const pv = e.target.closest('.tour-field')?.querySelector('[data-tour-preview]');
+      if (pv) pv.innerHTML = tourPreview(parseTour(e.target.value));
+      return;
+    }
     if (!e.target.matches('[data-video-input]')) return;
     const k = e.target.closest('.video-field')?.querySelector('[data-video-kind]');
     if (k) k.textContent = videoKind(e.target.value);
@@ -197,6 +234,8 @@ export function readForm(form, fields) {
     else if (f.type === 'datetime') out[f.name] = fromLocalInput(el.value);
     else if (f.type === 'list') out[f.name] = el.value.split('\n').map((s) => s.trim()).filter(Boolean);
     else if (f.type === 'images') out[f.name] = JSON.parse(el.value || '[]');
+    else if (f.type === 'groups') out[f.name] = parseGroups(el.value);
+    else if (f.type === 'tour') out[f.name] = parseTour(el.value);
     else if (f.type === 'links') out[f.name] = el.value.split('\n').map((l) => l.split('|').map((x) => x.trim())).filter((p) => p.length >= 2 && p[1]).map(([label, ...u]) => ({ label, url: u.join('|') }));
     else if (f.type === 'image') out[f.name] = el.value || null;
     else if (f.type === 'select' && f.numeric) out[f.name] = el.value === '' ? null : Number(el.value);
@@ -307,6 +346,10 @@ export async function listView(root, cfg) {
     }
   });
   await load();
+  // Opened as #/<list>/<id> (e.g. from the site preview's edit mode): go straight to that item's form.
+  if (cfg.openId && cfg.fields && canWrite) {
+    try { edit(await api(`${cfg.endpoint}/${cfg.openId}`)); } catch (err) { toast(err.message, true); }
+  }
   return { reload: load };
 }
 

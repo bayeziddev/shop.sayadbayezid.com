@@ -158,7 +158,10 @@ pages.get('/package/:slug', async (c) => {
         customData: { content_ids: [String(p.id)], content_type: 'product', content_name: p.name, content_category: p.categoryName, value: p.basePrice, currency: 'BDT' },
       },
     }),
-    V.packagePage(p, { coupons, faqs: [...faqs.results, ...sitewide], reviews, now, whyUs: whyUs(settings), designs: ds, related, whatsapp: wa }),
+    V.packagePage(p, {
+      coupons, faqs: [...faqs.results, ...sitewide], reviews, now, whyUs: whyUs(settings), designs: ds, related, whatsapp: wa,
+      common: (settings.common_features || '').split('\n').map((x) => x.trim()).filter(Boolean),
+    }),
   );
 });
 

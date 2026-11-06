@@ -24,7 +24,8 @@ const CSP_SITE = [
   // Package videos: YouTube (privacy-enhanced), Vimeo, Facebook and Google Drive players load only after the visitor presses play.
   "frame-src https://www.googletagmanager.com https://www.facebook.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://drive.google.com",
   "form-action 'self' https://*.sslcommerz.com https://checkout.stripe.com",
-  "frame-ancestors 'none'",
+  // Only this site itself may frame its pages (the admin's live preview); every other site is refused (clickjacking).
+  "frame-ancestors 'self'",
   "base-uri 'self'",
   'upgrade-insecure-requests',
 ].join('; ');

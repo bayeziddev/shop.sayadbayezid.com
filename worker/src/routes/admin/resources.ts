@@ -71,11 +71,14 @@ export const packagesDef: ResourceDef = {
     { name: 'why_us', type: 'json', default: '[]', max: 6000, label: 'কেন আমরা' },
     { name: 'demo_links', type: 'json', default: '[]', max: 3000, label: 'অতিরিক্ত ডেমো লিংক' },
     { name: 'demo_login', type: 'text', max: 300, default: '', label: 'ডেমো লগইন তথ্য' },
+    { name: 'feature_groups', type: 'json', default: '[]', max: 30000, label: 'A থেকে Z সব ফিচার' },
+    { name: 'screen_tour', type: 'json', default: '[]', max: 15000, label: 'স্ক্রিনশট ফিচার ট্যুর' },
   ],
   beforeSave: (_c, d) => {
     checkMedia(d.cover_image, 'কভার ছবি', 'cover_image');
     checkImages(d.images, 'স্ক্রিনশট', 'images');
     checkLinks(d.demo_links, 'demo_links');
+    if (d.screen_tour !== undefined) for (const t of parseJson<{ image?: unknown }[]>(String(d.screen_tour), [])) checkMedia(t?.image, 'ফিচার ট্যুরের ছবি', 'screen_tour');
     if (d.video_url && !isHttpUrl(String(d.video_url)) && !mediaSrc(String(d.video_url))) fail(422, 'ভিডিওর জন্য ইউটিউব/ফেসবুক/ভিমিও/ড্রাইভ লিংক দিন অথবা ফাইল আপলোড করুন', 'video_url');
   },
 };

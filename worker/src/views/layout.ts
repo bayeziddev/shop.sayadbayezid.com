@@ -170,7 +170,7 @@ function footer(ctx: PageCtx): Raw {
 function contactBlock(s: PageCtx['settings']): Raw {
   const wa = s.whatsapp_link || (s.whatsapp_number ? `https://wa.me/${s.whatsapp_number.replace(/\D/g, '')}` : '');
   const fb = s.facebook_page ? (s.facebook_page.startsWith('http') ? s.facebook_page : `https://facebook.com/${s.facebook_page}`) : '';
-  return html`<ul class="contact-list">
+  return html`<ul class="contact-list" data-edit="settings">
     ${wa ? html`<li><a href="${safeUrl(wa)}" target="_blank" rel="noopener" data-contact-click="whatsapp">💬 হোয়াটসঅ্যাপ${s.contact_phone ? html` · ${s.contact_phone}` : ''}</a></li>` : ''}
     ${s.contact_phone ? html`<li><a href="tel:${s.contact_phone.replace(/[^\d+]/g, '')}">📞 ${s.contact_phone}</a></li>` : ''}
     ${s.contact_email ? html`<li><a href="mailto:${s.contact_email}">✉️ ${s.contact_email}</a></li>` : ''}

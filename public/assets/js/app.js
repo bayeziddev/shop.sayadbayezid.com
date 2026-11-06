@@ -95,7 +95,8 @@ $$('[data-close-banner]').forEach((b) => {
 });
 const popup = $('dialog[data-popup]');
 if (popup && !sessionStorage.getItem('popup_' + popup.dataset.popup)) {
-  setTimeout(() => { try { popup.showModal(); } catch {} }, 6000);
+  // Never on top of the lead box (or any other open dialog).
+  setTimeout(() => { if (document.querySelector('dialog[open]')) return; try { popup.showModal(); } catch {} }, 6000);
   popup.addEventListener('close', () => sessionStorage.setItem('popup_' + popup.dataset.popup, '1'));
   $('[data-close-popup]', popup)?.addEventListener('click', () => popup.close());
 }

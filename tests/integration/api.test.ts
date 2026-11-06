@@ -15,6 +15,8 @@ const call = async (path: string, init?: RequestInit) => {
 
 async function enableBankTransfer() {
   await env.DB.prepare(`INSERT INTO settings (key, value) VALUES ('bank_details', '"পরীক্ষা ব্যাংক, হিসাব ১২৩"') ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run();
+  // Add-ons ship switched off (one fixed price); the pricing tests switch them on for one package to keep the add-on maths covered.
+  await env.DB.prepare(`UPDATE package_addons SET is_active = 1 WHERE package_id = (SELECT id FROM packages WHERE slug = 'gadget-market')`).run();
   await env.KV.delete('settings:v1');
 }
 
@@ -63,7 +65,8 @@ describe('catalog (package-list fixture)', () => {
     expect(r.status).toBe(200);
     expect(page).toContain('lang="bn"');
     expect(page).toContain('Cwb Agency');
-    expect(r.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
+    // Only the site itself (the admin's live preview) may frame its pages.
+    expect(r.headers.get('content-security-policy')).toContain("frame-ancestors 'self'");
   });
 });
 
@@ -74,14 +77,14 @@ describe('server-side price verification', () => {
     const client = priceLine({ id: p.id, categoryId: p.categoryId, basePrice: p.basePrice, addons: p.addons, offers: p.offers }, items[0], Date.now());
     const r = await call('/api/pricing/quote', json({ items }));
     expect(r.body.data.total).toBe(client.total);
-    expect(r.body.data.total).toBe(10000 + 2 * 1000 + 5000);
+    expect(r.body.data.total).toBe(12000 + 2 * 1000 + 5000);
   });
 
   it('ignores a tampered client total and refuses to charge a different amount', async () => {
     const r = await placeOrder({ expectedTotal: 100 });
     expect(r.status).toBe(409);
     expect(r.body.code).toBe('price_changed');
-    expect(r.body.data.total).toBe(17000);
+    expect(r.body.data.total).toBe(19000);
   });
 
   it('expired offers stop discounting', async () => {
@@ -108,7 +111,7 @@ describe('order → payment → requirements (create-order fixture)', () => {
     expect(skip.status).toBe(422);
 
     await call(`/api/orders/${orderNumber}/manual-payment`, json({ token, trx_id: 'TRX-9981', sender: 'ব্যাংক' }));
-    const verify = await call('/api/admin/orders/1/verify-payment', json({ amount: 17000, confirm: true }, h));
+    const verify = await call('/api/admin/orders/1/verify-payment', json({ amount: 19000, confirm: true }, h));
     expect(verify.status).toBe(200);
 
     const order = await env.DB.prepare('SELECT * FROM orders WHERE id = 1').first<any>();
@@ -126,7 +129,7 @@ describe('order → payment → requirements (create-order fixture)', () => {
 
     const o2 = await placeOrder();
     await call(`/api/orders/${o2.body.data.orderNumber}/manual-payment`, json({ token: o2.body.data.token, trx_id: 'TRX-9982', sender: 'ব্যাংক' }));
-    await call('/api/admin/orders/2/verify-payment', json({ amount: 17000, confirm: true }, h));
+    await call('/api/admin/orders/2/verify-payment', json({ amount: 19000, confirm: true }, h));
     const inv2 = await env.DB.prepare('SELECT invoice_number FROM orders WHERE id = 2').first<any>();
     expect(inv2.invoice_number).toMatch(/-000002$/);
 

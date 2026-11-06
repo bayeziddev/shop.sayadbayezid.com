@@ -71,7 +71,9 @@ test('package page: screenshots, demo buttons and a working order button', async
   await page.goto('/package/cwb-gaming');
   await expect(page.locator('h1')).toContainText('CWB Gaming');
   await expect(page.locator('.demo-btns a')).toHaveCount(3); // marketplace, admin, seller
-  await expect(page.locator('.shot-grid .shot').first()).toBeVisible();
+  await expect(page.locator('.tour-row').first()).toBeVisible(); // screenshot feature tour
+  await expect(page.locator('.az-card').first()).toBeVisible();   // A-to-Z features
+  await expect(page.locator('.addons')).toHaveCount(0);            // one fixed price
   if (info.project.name === 'mobile') {
     await expect(page.locator('[data-sticky-cta]')).toBeHidden();
     await page.locator('#features').scrollIntoViewIfNeeded(); // one jump, past the order button
