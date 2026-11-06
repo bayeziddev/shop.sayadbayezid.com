@@ -27,6 +27,7 @@ function render() {
   offerRow.hidden = line.offerDiscount <= 0;
   set('offer', '−' + taka(line.offerDiscount));
   set('total', taka(line.total));
+  set('total-inline', taka(line.total));
   $$('[data-addon]', form).forEach((el) => el.closest('.addon')?.classList.toggle('is-on', el.type === 'checkbox' ? el.checked : toNum(el.value) > 0));
   return line;
 }
@@ -55,6 +56,9 @@ render();
 form.addEventListener('submit', (e) => {
   e.preventDefault();
   const sel = selection();
+  // Browser-only funnel step (no money changes hands here, so no server event and never a Purchase).
+  const line = priceLine(pricingPkg, sel, Date.now());
+  window.SBTrack?.standard?.('AddToCart', { content_ids: [String(pkg.id)], content_name: pkg.name, content_type: 'product', value: line.total, currency: 'BDT', item_category: pkg.categoryName });
   const cart = getCart().filter((l) => l.packageId !== pkg.id);
   cart.push({ ...sel, name: pkg.name, slug: pkg.slug, addedAt: Date.now() });
   setCart(cart);

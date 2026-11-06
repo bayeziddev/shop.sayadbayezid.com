@@ -93,17 +93,37 @@ export function fieldHtml(f, v) {
       const arr = Array.isArray(val) ? val : (() => { try { return JSON.parse(val || '[]'); } catch { return []; } })();
       return `<label>${label} <small>(প্রতি লাইনে একটি)</small><textarea name="${f.name}" rows="${f.rows || 6}" data-list>${esc(arr.join('\n'))}</textarea></label>`;
     }
-    case 'image': return `<div><label>${label}</label><div class="thumbs" data-media-field="${f.name}" data-multi="0" data-accept="${f.accept || 'image/*'}">${mediaThumbs(val ? [val] : [])}</div><input type="hidden" name="${f.name}" value="${esc(val || '')}"><label class="btn sm" style="width:max-content;margin-top:.4rem">আপলোড<input type="file" accept="${f.accept || 'image/*'}" data-upload-for="${f.name}" hidden></label></div>`;
+    case 'image': return `<div><label>${label}</label><div class="thumbs" data-media-field="${f.name}" data-multi="0" data-accept="${f.accept || 'image/*'}">${mediaThumbs(val ? [val] : [])}</div><input type="hidden" name="${f.name}" value="${esc(val || '')}"><div class="media-btns"><label class="btn sm">আপলোড<input type="file" accept="${f.accept || 'image/*'}" data-upload-for="${f.name}" hidden></label><button type="button" class="btn sm" data-add-url-for="${f.name}">লিংক দিন</button></div></div>`;
     case 'images': {
       const arr = Array.isArray(val) ? val : (() => { try { return JSON.parse(val || '[]'); } catch { return []; } })();
-      return `<div><label>${label}</label><div class="thumbs" data-media-field="${f.name}" data-multi="1">${mediaThumbs(arr)}</div><input type="hidden" name="${f.name}" value="${esc(JSON.stringify(arr))}"><label class="btn sm" style="width:max-content;margin-top:.4rem">ছবি যোগ করুন<input type="file" accept="image/*" multiple data-upload-for="${f.name}" hidden></label></div>`;
+      return `<div><label>${label}</label><div class="thumbs" data-media-field="${f.name}" data-multi="1">${mediaThumbs(arr)}</div><input type="hidden" name="${f.name}" value="${esc(JSON.stringify(arr))}"><div class="media-btns"><label class="btn sm">ছবি আপলোড<input type="file" accept="image/*" multiple data-upload-for="${f.name}" hidden></label><button type="button" class="btn sm" data-add-url-for="${f.name}">ছবির লিংক যোগ করুন</button></div><small class="muted">প্রথম ছবিটি আগে দেখায়। ক্রম বদলাতে সরিয়ে আবার যোগ করুন।</small></div>`;
+    }
+    case 'video': return `<div class="video-field"><label>${label}<input type="text" name="${f.name}" value="${esc(val)}" maxlength="500" placeholder="https://youtu.be/… · facebook.com/…/videos/… · vimeo.com/… · drive.google.com/… · .mp4" data-video-input></label><div class="media-btns"><label class="btn sm">ভিডিও ফাইল আপলোড<input type="file" accept="video/mp4,video/webm" data-upload-to-input="${f.name}" hidden></label><span class="small muted" data-video-kind>${videoKind(val)}</span></div></div>`;
+    case 'links': {
+      const arr = Array.isArray(val) ? val : (() => { try { return JSON.parse(val || '[]'); } catch { return []; } })();
+      return `<label>${label} <small>(প্রতি লাইনে: লেবেল | https://লিংক)</small><textarea name="${f.name}" rows="${f.rows || 3}" data-links>${esc(arr.map((l) => `${l.label} | ${l.url}`).join('\n'))}</textarea></label>`;
     }
     default: return `<label>${label}<input type="${f.inputType || 'text'}" name="${f.name}" value="${esc(val)}" ${req} maxlength="${f.max || 500}" ${f.pattern ? `pattern="${f.pattern}"` : ''} ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ''}></label>`;
   }
 }
 
+/** Uploaded R2 key → /media/…; https links and site paths (/assets/…) are used as they are. */
+export const mediaSrc = (k) => (/^https?:\/\//.test(k) || k.startsWith('/') ? k : `/media/${k}`);
+
+/** Which player a pasted video link will use (mirrors shared/media.ts parseVideo). */
+export function videoKind(v) {
+  const s = String(v || '').trim();
+  if (!s) return 'ভিডিও নেই';
+  if (/youtu\.?be/.test(s)) return '✓ ইউটিউব ভিডিও';
+  if (/vimeo\.com/.test(s)) return '✓ ভিমিও ভিডিও';
+  if (/facebook\.com|fb\.watch/.test(s)) return '✓ ফেসবুক ভিডিও';
+  if (/drive\.google\.com/.test(s)) return '✓ গুগল ড্রাইভ ভিডিও (শেয়ার: Anyone with the link)';
+  if (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(s) || !/^https?:/.test(s)) return '✓ ভিডিও ফাইল';
+  return 'বাইরের লিংক — বোতাম হিসেবে দেখাবে';
+}
+
 function mediaThumbs(keys) {
-  return keys.filter(Boolean).map((k) => `<figure data-key="${esc(k)}">${/\.(mp4|webm)$/.test(k) ? `<video src="/media/${esc(k)}" muted></video>` : `<img src="/media/${esc(k)}" alt="">`}<button type="button" data-remove-media aria-label="সরান">✕</button></figure>`).join('');
+  return keys.filter(Boolean).map((k) => `<figure data-key="${esc(k)}">${/\.(mp4|webm)$/.test(k) ? `<video src="${esc(mediaSrc(k))}" muted></video>` : `<img src="${esc(mediaSrc(k))}" alt="" loading="lazy">`}<button type="button" data-remove-media aria-label="সরান">✕</button></figure>`).join('');
 }
 
 /** Wire up upload inputs and removable thumbnails inside a form. */
@@ -113,7 +133,36 @@ export function bindMedia(form) {
     const keys = $$('figure', box).map((f) => f.dataset.key);
     form.querySelector(`input[type=hidden][name="${name}"]`).value = box.dataset.multi === '1' ? JSON.stringify(keys) : keys[0] || '';
   };
+  form.addEventListener('input', (e) => {
+    if (!e.target.matches('[data-video-input]')) return;
+    const k = e.target.closest('.video-field')?.querySelector('[data-video-kind]');
+    if (k) k.textContent = videoKind(e.target.value);
+  });
+  $$('[data-upload-to-input]', form).forEach((inp) => inp.addEventListener('change', async () => {
+    const target = form.querySelector(`[name="${inp.dataset.uploadToInput}"]`);
+    const fd = new FormData();
+    fd.append('file', inp.files[0]);
+    try {
+      const r = await api('/uploads', { method: 'POST', body: fd });
+      target.value = r.key;
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+      toast('আপলোড সম্পন্ন');
+    } catch (err) { toast(err.message, true); }
+    inp.value = '';
+  }));
   form.addEventListener('click', (e) => {
+    const add = e.target.closest('[data-add-url-for]');
+    if (add) {
+      const name = add.dataset.addUrlFor;
+      const url = (window.prompt('ছবির লিংক দিন (https://… অথবা /assets/…)') || '').trim();
+      if (!url) return;
+      if (!/^https?:\/\/\S+$/.test(url) && !/^\/[\w./%-]+$/.test(url)) { toast('সঠিক লিংক দিন — https:// দিয়ে শুরু হবে', true); return; }
+      const box = form.querySelector(`[data-media-field="${name}"]`);
+      if (box.dataset.multi !== '1') box.innerHTML = '';
+      box.insertAdjacentHTML('beforeend', mediaThumbs([url]));
+      sync(name);
+      return;
+    }
     const b = e.target.closest('[data-remove-media]');
     if (!b) return;
     const box = b.closest('[data-media-field]');
@@ -148,6 +197,7 @@ export function readForm(form, fields) {
     else if (f.type === 'datetime') out[f.name] = fromLocalInput(el.value);
     else if (f.type === 'list') out[f.name] = el.value.split('\n').map((s) => s.trim()).filter(Boolean);
     else if (f.type === 'images') out[f.name] = JSON.parse(el.value || '[]');
+    else if (f.type === 'links') out[f.name] = el.value.split('\n').map((l) => l.split('|').map((x) => x.trim())).filter((p) => p.length >= 2 && p[1]).map(([label, ...u]) => ({ label, url: u.join('|') }));
     else if (f.type === 'image') out[f.name] = el.value || null;
     else if (f.type === 'select' && f.numeric) out[f.name] = el.value === '' ? null : Number(el.value);
     else out[f.name] = el.value;

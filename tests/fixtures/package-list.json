@@ -1,1 +1,1 @@
-{ "expectedCategories": ["fashion", "clothing", "gadgets", "herbal", "news", "blog"], "expectedPackageCount": 12, "requiredFields": ["id", "slug", "name", "basePrice", "addons", "offers", "features", "categorySlug"] }
+{ "expectedCategories": ["fashion", "clothing", "gadgets", "herbal", "beauty", "jewellery", "baby-kids", "gaming", "business-software"], "expectedPackageCount": 15, "requiredFields": ["id", "slug", "name", "basePrice", "addons", "offers", "features", "categorySlug", "cover", "images", "video", "demoLinks", "benefits", "solution"] }

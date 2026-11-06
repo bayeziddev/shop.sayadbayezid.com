@@ -21,7 +21,8 @@ const CSP_SITE = [
   "media-src 'self' blob: https:",
   "font-src 'self'",
   "connect-src 'self' https://www.facebook.com https://connect.facebook.net https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://*.clarity.ms",
-  "frame-src https://www.googletagmanager.com https://www.facebook.com",
+  // Package videos: YouTube (privacy-enhanced), Vimeo, Facebook and Google Drive players load only after the visitor presses play.
+  "frame-src https://www.googletagmanager.com https://www.facebook.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://drive.google.com",
   "form-action 'self' https://*.sslcommerz.com https://checkout.stripe.com",
   "frame-ancestors 'none'",
   "base-uri 'self'",
@@ -111,7 +112,7 @@ app.get('/sitemap.xml', async (c) => {
   ]);
   const u = (p: string, d?: string) => `<url><loc>${publicOrigin(c.env)}${p}</loc>${d ? `<lastmod>${d.slice(0, 10)}</lastmod>` : ''}</url>`;
   const list = [
-    u('/'), u('/faq'), u('/about'), u('/contact'), u('/quiz'), u('/quote'), u('/refund-policy'), u('/terms'), u('/privacy'),
+    u('/'), u('/packages'), u('/designs'), u('/portfolio'), u('/faq'), u('/about'), u('/contact'), u('/quiz'), u('/quote'), u('/refund-policy'), u('/terms'), u('/privacy'),
     ...(cats.results as { slug: string; updated_at: string }[]).map((r) => u(`/category/${r.slug}`, r.updated_at)),
     ...(pkgs.results as { slug: string; updated_at: string }[]).map((r) => u(`/package/${r.slug}`, r.updated_at)),
     ...(lps.results as { slug: string; updated_at: string }[]).map((r) => u(`/lp/${r.slug}`, r.updated_at)),

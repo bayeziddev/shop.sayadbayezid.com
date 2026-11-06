@@ -2,7 +2,11 @@ import { html, raw, paragraphs, safeUrl, jsonScript, type Raw } from '../lib/htm
 import type { PublicPackage, CouponRow, CategoryRow } from '../lib/catalog';
 import { mediaUrl } from '../lib/catalog';
 import { taka, bnDigits, bnDate } from '../lib/util';
-import { browserFrame, packageCard, priceBlock, liveOffer, countdown, offerBadge, couponChip, couponsFor, reviewCard, faqList, leadForm, stars, type ReviewView } from './components';
+import {
+  browserFrame, phoneFrame, packageCard, priceBlock, liveOffer, countdown, offerBadge, couponChip, couponsFor, reviewCard, faqList, leadForm, stars,
+  demoLink, videoPlayer, pointCards, designCard, portfolioCard, shotCaption, isTallShot, tierLabel, DESIGN_KINDS,
+  type ReviewView, type DesignView, type PortfolioView,
+} from './components';
 import type { SiteSettings } from '../lib/settings';
 
 export interface HomeData {
@@ -13,33 +17,39 @@ export interface HomeData {
   reviews: ReviewView[];
   faqs: { question: string; answer: string }[];
   stats: { clients: number; completed: number; reviewCount: number; reviewAvg: number };
+  designs: DesignView[];
+  portfolio: PortfolioView[];
+  whyUs: { title: string; text: string }[];
+  minPrice: number | null;
   now: number;
 }
 
 export function homePage(d: HomeData): Raw {
-  const showcase = d.featured.slice(0, 6);
+  const showcase = d.featured.filter((p) => p.cover).slice(0, 6);
   const proof = [
     d.stats.clients > 0 ? html`<div class="stat"><strong>${bnDigits(d.stats.clients)}</strong><span>ক্লায়েন্ট আমাদের সাথে কাজ করেছেন</span></div>` : '',
     d.stats.completed > 0 ? html`<div class="stat"><strong>${bnDigits(d.stats.completed)}</strong><span>প্রজেক্ট সফলভাবে সম্পন্ন</span></div>` : '',
     d.stats.reviewCount > 0 ? html`<div class="stat"><strong>${bnDigits(d.stats.reviewAvg.toFixed(1))}/৫</strong><span>${bnDigits(d.stats.reviewCount)}টি ক্লায়েন্ট রিভিউর গড়</span></div>` : '',
   ].filter(Boolean);
+  const kinds = DESIGN_KINDS.filter(([k]) => d.designs.some((x) => x.kind === k));
   return html`
 <section class="hero mesh">
   <div class="container hero-grid">
     <div class="hero-copy reveal">
-      <span class="eyebrow">ছোট ব্যবসার জন্য প্রস্তুত ওয়েবসাইট</span>
+      <span class="eyebrow">রেডি ওয়েবসাইট · লাইভ ডেমো${d.minPrice ? html` · ${taka(d.minPrice)} থেকে` : ''}</span>
       <h1>আগে <span class="grad-text">লাইভ ডেমো</span> দেখুন,<br>তারপর আপনার সাইট অর্ডার করুন</h1>
       <p class="lead">${d.settings.brand_tagline}</p>
       <div class="hero-cta">
-        <a class="btn btn-primary btn-lg" href="#categories">প্যাকেজ দেখুন</a>
-        <a class="btn btn-ghost btn-lg" href="/quote">কাস্টম কোটেশন নিন</a>
+        <a class="btn btn-primary btn-lg" href="/packages">সব রেডি ওয়েবসাইট দেখুন <span aria-hidden="true">→</span></a>
+        <a class="btn btn-ghost btn-lg" href="/designs">ডিজাইন গ্যালারি দেখুন</a>
       </div>
       <ul class="hero-points"><li>✓ দাম আগেই স্পষ্ট</li><li>✓ পেমেন্টের পরেই কাজ শুরু</li><li>✓ অনুমোদনের আগে রিভিউ</li></ul>
+      ${d.settings.lead_box_enabled ? html`<button type="button" class="link-cta hero-advice" data-leadbox-open data-leadbox-from="hero">কোনটা নেবেন বুঝতে পারছেন না? ২ মিনিটে ফ্রি পরামর্শ নিন →</button>` : ''}
     </div>
-    ${showcase.length ? html`<div class="showcase reveal" data-rotator aria-roledescription="স্লাইডশো" aria-label="তৈরি করা সাইটের ডেমো">
+    ${showcase.length ? html`<div class="showcase reveal" data-rotator aria-roledescription="স্লাইডশো" aria-label="আমাদের রেডি ওয়েবসাইটের ডেমো">
       ${showcase.map((p, i) => html`<figure class="slide ${i === 0 ? 'is-active' : ''}" data-slide>
-        ${browserFrame(p, { eager: i === 0, video: true })}
-        <figcaption><span><strong>${p.name}</strong> · ${p.categoryName}</span>${safeUrl(p.demoUrl) ? html`<a href="${safeUrl(p.demoUrl)}" target="_blank" rel="noopener">লাইভ ডেমো খুলুন ↗</a>` : html`<a href="/package/${p.slug}">বিস্তারিত →</a>`}</figcaption>
+        <a href="/package/${p.slug}" aria-label="${p.name} — বিস্তারিত দেখুন">${browserFrame(p, { eager: i === 0, video: true })}</a>
+        <figcaption><span><strong>${p.name}</strong></span>${demoLink(p, p.demoUrl, 'লাইভ ডেমো খুলুন', 'link-cta')}</figcaption>
       </figure>`)}
       <div class="dots">${showcase.map((_, i) => html`<button data-dot="${i}" aria-label="স্লাইড ${bnDigits(i + 1)}" ${i === 0 ? raw('aria-current="true"') : ''}></button>`)}</div>
     </div>` : ''}
@@ -48,32 +58,57 @@ export function homePage(d: HomeData): Raw {
 
 <section class="section" id="categories">
   <div class="container">
-    <header class="section-head"><h2>আপনার ব্যবসার ধরন বেছে নিন</h2><p class="muted">প্রতিটি ক্যাটাগরিতে আমাদের তৈরি আসল সাইটের ডেমো আছে</p></header>
+    <header class="section-head"><h2>আপনার ব্যবসার ধরন বেছে নিন</h2><p class="muted">প্রতিটি ক্যাটাগরিতে আমাদের তৈরি আসল সাইটের লাইভ ডেমো আছে</p></header>
     <div class="cat-grid">
-      ${d.categories.map((c) => html`<a class="card cat-card" href="/category/${c.slug}">
+      ${d.categories.filter((c) => c.package_count > 0).map((c) => html`<a class="card cat-card" href="/category/${c.slug}">
         ${c.image_key ? html`<img src="${mediaUrl(c.image_key)}" alt="" loading="lazy">` : html`<span class="cat-ico" aria-hidden="true">${c.icon}</span>`}
         <h3>${c.name}</h3><p class="muted">${c.description}</p>
-        <span class="cat-meta">${bnDigits(c.package_count)}টি প্যাকেজ${c.min_price !== null ? html` · শুরু ${taka(c.min_price)}` : ''}</span>
+        <span class="cat-meta">${bnDigits(c.package_count)}টি প্যাকেজ${c.min_price !== null ? html` · ${taka(c.min_price)} থেকে` : ''} <span aria-hidden="true">→</span></span>
       </a>`)}
     </div>
   </div>
 </section>
 
+${d.featured.length ? html`<section class="section">
+  <div class="container">
+    <header class="section-head"><h2>জনপ্রিয় রেডি ওয়েবসাইট</h2><p class="muted">ক্লিক করে লাইভ ডেমো ঘুরে দেখুন — পছন্দ হলে আজই অর্ডার করুন</p></header>
+    <div class="pkg-grid">${d.featured.slice(0, 9).map((p) => packageCard(p, d.coupons, d.now))}</div>
+    <p class="center"><a class="btn btn-ghost btn-lg" href="/packages">সব প্যাকেজ দেখুন <span aria-hidden="true">→</span></a></p>
+  </div>
+</section>` : ''}
+
+${d.designs.length ? html`<section class="section designs-teaser">
+  <div class="container">
+    <header class="section-head"><h2>ডিজাইন গ্যালারি</h2><p class="muted">চেকআউট, সাইডবার, ফুটার, হেডার — আমাদের তৈরি সব ডিজাইন পাশাপাশি তুলনা করুন</p></header>
+    <div class="chip-row" role="tablist" aria-label="ডিজাইনের ধরন">${kinds.slice(0, 6).map(([k, l], i) => html`<a class="chip ${i === 0 ? 'is-on' : ''}" href="/designs?kind=${k}">${l}</a>`)}</div>
+    <div class="design-grid">${d.designs.slice(0, 6).map(designCard)}</div>
+    <p class="center"><a class="btn btn-primary btn-lg" href="/designs">সব ডিজাইন দেখুন <span aria-hidden="true">→</span></a></p>
+  </div>
+</section>` : ''}
+
 <section class="section how">
   <div class="container">
     <header class="section-head"><h2>কীভাবে কাজ করে</h2></header>
     <ol class="steps">
-      <li class="card"><span class="step-n">১</span><h3>প্যাকেজ বাছাই করুন</h3><p class="muted">লাইভ ডেমো দেখে প্যাকেজ বেছে নিন, প্রয়োজনীয় অ্যাড-অন যোগ করুন — দাম সাথে সাথে দেখতে পাবেন।</p></li>
-      <li class="card"><span class="step-n">২</span><h3>আমরা বানাই</h3><p class="muted">পেমেন্টের পর আপনার ব্যবসার তথ্য দিন। প্রতিটি ধাপের আপডেট আপনার অর্ডার পেজে ও মেসেজে পাবেন।</p></li>
-      <li class="card"><span class="step-n">৩</span><h3>আপনি লাইভ করুন</h3><p class="muted">প্রিভিউ দেখে মতামত দিন, সংশোধন শেষে অনুমোদন দিলেই আপনার সাইট লাইভ।</p></li>
+      <li class="card"><span class="step-n">১</span><h3>ডেমো দেখে প্যাকেজ বাছাই করুন</h3><p class="muted">লাইভ ডেমো ঘুরে দেখুন, প্রয়োজনীয় অ্যাড-অন যোগ করুন — দাম সাথে সাথে দেখতে পাবেন।</p></li>
+      <li class="card"><span class="step-n">২</span><h3>পেমেন্ট করুন, আমরা বানাই</h3><p class="muted">পেমেন্টের পর আপনার ব্যবসার তথ্য দিন। প্রতিটি ধাপের আপডেট আপনার অর্ডার পেজে পাবেন।</p></li>
+      <li class="card"><span class="step-n">৩</span><h3>অনুমোদন দিন, লাইভ হোক</h3><p class="muted">প্রিভিউ দেখে মতামত দিন, সংশোধন শেষে অনুমোদন দিলেই আপনার সাইট লাইভ।</p></li>
     </ol>
   </div>
 </section>
 
-${d.featured.length ? html`<section class="section">
+${d.portfolio.length ? html`<section class="section">
   <div class="container">
-    <header class="section-head"><h2>জনপ্রিয় প্যাকেজ</h2></header>
-    <div class="pkg-grid">${d.featured.slice(0, 6).map((p) => packageCard(p, d.coupons, d.now))}</div>
+    <header class="section-head"><h2>সফল ডেলিভারি</h2><p class="muted">আমাদের ক্লায়েন্টদের জন্য তৈরি ও ডেলিভারি করা আসল সাইট</p></header>
+    <div class="work-grid">${d.portfolio.slice(0, 3).map(portfolioCard)}</div>
+    <p class="center"><a class="btn btn-ghost btn-lg" href="/portfolio">সব ডেলিভারি দেখুন <span aria-hidden="true">→</span></a></p>
+  </div>
+</section>` : ''}
+
+${d.whyUs.length ? html`<section class="section">
+  <div class="container">
+    <header class="section-head"><h2>কেন ${d.settings.brand_name}?</h2></header>
+    ${pointCards(d.whyUs, '★')}
   </div>
 </section>` : ''}
 
@@ -87,17 +122,41 @@ ${proof.length || d.reviews.length ? html`<section class="section proof">
 ${d.faqs.length ? html`<section class="section">
   <div class="container narrow">
     <header class="section-head"><h2>সাধারণ প্রশ্ন</h2></header>
-    ${faqList(d.faqs.slice(0, 4))}
-    <p class="center"><a class="btn btn-ghost" href="/faq">সব প্রশ্নোত্তর দেখুন</a></p>
+    ${faqList(d.faqs.slice(0, 5))}
+    <p class="center"><a class="btn btn-ghost" href="/faq">সব প্রশ্নোত্তর দেখুন <span aria-hidden="true">→</span></a></p>
   </div>
 </section>` : ''}
 
 <section class="section">
   <div class="container">
     <div class="cta-band mesh">
-      <div><h2>কোন প্যাকেজ নেবেন বুঝতে পারছেন না?</h2><p>৪টি ছোট প্রশ্নের উত্তর দিন — আমরা আপনার জন্য উপযুক্ত প্যাকেজ সাজেস্ট করব।</p></div>
-      <div class="cta-actions"><a class="btn btn-light btn-lg" href="/quiz">কুইজ শুরু করুন</a><a class="btn btn-outline-light btn-lg" href="/quote">কোটেশন নিন</a></div>
+      <div><h2>কোন সাইট নেবেন বুঝতে পারছেন না?</h2><p>৪টি ছোট প্রশ্নের উত্তর দিন — আমরা আপনার ব্যবসার জন্য উপযুক্ত প্যাকেজ সাজেস্ট করব।</p></div>
+      <div class="cta-actions"><a class="btn btn-light btn-lg" href="/quiz">১ মিনিটের কুইজ শুরু করুন</a><a class="btn btn-outline-light btn-lg" href="/quote">ফ্রি কোটেশন নিন</a></div>
     </div>
+  </div>
+</section>`;
+}
+
+/** Category filter chips + grid. Filtering is client-side (works on the static GitHub Pages copy too). */
+function filterChips(cats: { slug: string; name: string }[], allLabel: string): Raw {
+  return html`<div class="chip-row" data-filter-chips role="toolbar" aria-label="ক্যাটাগরি অনুযায়ী দেখুন"><button type="button" class="chip is-on" data-filter="">${allLabel}</button>${cats.map((c) => html`<button type="button" class="chip" data-filter="${c.slug}">${c.name}</button>`)}</div>`;
+}
+
+export function packagesPage(pkgs: PublicPackage[], coupons: CouponRow[], now: number): Raw {
+  const cats = [...new Map(pkgs.map((p) => [p.categorySlug || '', { slug: p.categorySlug || '', name: p.categoryName || '' }])).values()];
+  return html`
+<section class="page-hero mesh">
+  <div class="container">
+    <nav class="crumbs" aria-label="অবস্থান"><a href="/">হোম</a> › <span>সব প্যাকেজ</span></nav>
+    <h1>সব রেডি ওয়েবসাইট</h1>
+    <p class="lead">প্রতিটির আসল লাইভ ডেমো আছে — ক্লিক করে ঘুরে দেখুন, পছন্দ হলে আপনার ব্র্যান্ডে বানিয়ে নিন।</p>
+  </div>
+</section>
+<section class="section">
+  <div class="container" data-filter-scope>
+    ${filterChips(cats, `সব (${bnDigits(pkgs.length)})`)}
+    <div class="pkg-grid">${pkgs.map((p) => packageCard(p, coupons, now))}</div>
+    <div class="card quote-nudge"><div><h3>যেমন চান ঠিক তেমন নেই?</h3><p class="muted">আপনার চাহিদা জানান — কাস্টম সাইটের দাম জানিয়ে দেব।</p></div><a class="btn btn-primary" href="/quote">ফ্রি কোটেশন নিন →</a></div>
   </div>
 </section>`;
 }
@@ -106,7 +165,7 @@ export function categoryPage(cat: CategoryRow, pkgs: PublicPackage[], coupons: C
   return html`
 <section class="page-hero mesh">
   <div class="container">
-    <nav class="crumbs" aria-label="অবস্থান"><a href="/">হোম</a> › <span>${cat.name}</span></nav>
+    <nav class="crumbs" aria-label="অবস্থান"><a href="/">হোম</a> › <a href="/packages">সব প্যাকেজ</a> › <span>${cat.name}</span></nav>
     <h1>${cat.icon} ${cat.name} ওয়েবসাইট</h1>
     <p class="lead">${cat.description}</p>
     ${catOffer ? html`<div class="offer-strip">${offerBadge(catOffer)} <span>${catOffer.title || 'এই ক্যাটাগরির সব প্যাকেজে অফার চলছে'}</span> ${countdown(catOffer.endsAt)}</div>` : ''}
@@ -114,21 +173,39 @@ export function categoryPage(cat: CategoryRow, pkgs: PublicPackage[], coupons: C
 </section>
 <section class="section">
   <div class="container">
-    ${pkgs.length ? html`<div class="pkg-grid">${pkgs.map((p) => packageCard(p, coupons, now))}</div>` : html`<div class="empty card"><p>এই ক্যাটাগরিতে এখনো কোনো প্যাকেজ যোগ করা হয়নি।</p><a class="btn btn-primary" href="/quote">কাস্টম কোটেশন নিন</a></div>`}
-    <div class="card quote-nudge"><div><h3>আপনার চাহিদা একটু আলাদা?</h3><p class="muted">প্যাকেজের বাইরে কিছু লাগলে জানান — আলাদা মূল্য জানিয়ে দেব।</p></div><a class="btn btn-ghost" href="/quote">কোটেশন চাই</a></div>
+    ${pkgs.length ? html`<div class="pkg-grid">${pkgs.map((p) => packageCard(p, coupons, now))}</div>` : html`<div class="empty card"><p>এই ক্যাটাগরিতে এখনো কোনো প্যাকেজ যোগ করা হয়নি।</p><a class="btn btn-primary" href="/quote">ফ্রি কোটেশন নিন →</a></div>`}
+    <div class="card quote-nudge"><div><h3>আপনার চাহিদা একটু আলাদা?</h3><p class="muted">প্যাকেজের বাইরে কিছু লাগলে জানান — আলাদা মূল্য জানিয়ে দেব।</p></div><a class="btn btn-ghost" href="/quote">কোটেশন চাই →</a></div>
   </div>
 </section>`;
 }
 
-export function packagePage(p: PublicPackage, d: { coupons: CouponRow[]; faqs: { question: string; answer: string }[]; reviews: ReviewView[]; now: number }): Raw {
+export interface PackagePageData {
+  coupons: CouponRow[];
+  faqs: { question: string; answer: string }[];
+  reviews: ReviewView[];
+  whyUs: { title: string; text: string }[];
+  designs: DesignView[];
+  related: PublicPackage[];
+  whatsapp: string | null;
+  now: number;
+}
+
+export function packagePage(p: PublicPackage, d: PackagePageData): Raw {
   const offer = liveOffer(p, d.now);
   const cs = couponsFor(p, d.coupons);
   const soon = p.status === 'coming_soon';
   const avg = d.reviews.length ? d.reviews.reduce((s, r) => s + r.rating, 0) / d.reviews.length : 0;
-  const gallery = [
-    ...(p.demoVideo ? [{ type: 'video', src: p.demoVideo }] : []),
-    ...p.images.map((src) => ({ type: 'img', src })),
+  const shots = [...new Set([p.cover, ...p.images].filter(Boolean))];
+  const wide = shots.filter((s) => !isTallShot(s));
+  const mobile = shots.find((s) => /\/mobile\.\w+$/.test(s));
+  const whyUs = p.whyUs.length ? p.whyUs : d.whyUs;
+  const demos = [...(p.demoUrl ? [{ label: 'লাইভ ডেমো দেখুন', url: p.demoUrl }] : []), ...p.demoLinks.filter((l) => l.url !== p.demoUrl)];
+  const nav: [string, string, boolean][] = [
+    ['solution', 'সমাধান', !!p.solution], ['benefits', 'আপনার লাভ', p.benefits.length > 0], ['features', 'ফিচার', true],
+    ['video', 'ভিডিও', !!p.video], ['screens', 'স্ক্রিনশট', shots.length > 1], ['why', 'কেন আমরা', whyUs.length > 0],
+    ['reviews', 'রিভিউ', true], ['faq', 'প্রশ্নোত্তর', d.faqs.length > 0],
   ];
+  const orderLabel = html`এখনই অর্ডার করুন — <span data-cfg="total-inline">${taka(p.basePrice)}</span>`;
   return html`
 <section class="section pkg-detail">
   <div class="container">
@@ -136,26 +213,27 @@ export function packagePage(p: PublicPackage, d: { coupons: CouponRow[]; faqs: {
     <div class="pkg-layout">
       <div class="pkg-left">
         <div class="gallery" data-gallery>
-          <div class="gallery-main">${gallery.length ? gallery.map((g, i) => html`<div class="g-item ${i === 0 ? 'is-active' : ''}" data-g-item>${browserFrame({ ...p, images: g.type === 'img' ? [g.src] : p.images, demoVideo: g.type === 'video' ? g.src : '' }, { eager: i === 0, video: g.type === 'video' })}</div>`) : browserFrame(p, { eager: true })}</div>
-          ${gallery.length > 1 ? html`<div class="gallery-thumbs">${gallery.map((g, i) => html`<button data-g-thumb="${i}" aria-label="ছবি ${bnDigits(i + 1)}" ${i === 0 ? raw('aria-current="true"') : ''}>${g.type === 'video' ? html`<span class="thumb-video">▶ ভিডিও</span>` : html`<img src="${g.src}" alt="" loading="lazy">`}</button>`)}</div>` : ''}
+          <div class="gallery-main">${wide.length
+            ? wide.map((src, i) => html`<div class="g-item ${i === 0 ? 'is-active' : ''}" data-g-item><button type="button" class="g-zoom" data-lightbox="${src}" data-caption="${p.name} — ${shotCaption(src, i)}" aria-label="বড় করে দেখুন">${browserFrame(p, { eager: i === 0, src, alt: `${p.name} — ${shotCaption(src, i)}` })}</button></div>`)
+            : browserFrame(p, { eager: true })}</div>
+          ${wide.length > 1 ? html`<div class="gallery-thumbs" role="tablist" aria-label="স্ক্রিনশট">${wide.map((src, i) => html`<button data-g-thumb="${i}" aria-label="${shotCaption(src, i)}" ${i === 0 ? raw('aria-current="true"') : ''}><img src="${src}" alt="" loading="lazy"><span>${shotCaption(src, i)}</span></button>`)}</div>` : ''}
         </div>
-        ${safeUrl(p.demoUrl) ? html`<a class="btn btn-ghost btn-block demo-btn" href="${safeUrl(p.demoUrl)}" target="_blank" rel="noopener">আসল লাইভ ডেমো সাইট খুলুন ↗</a>` : ''}
-        <div class="card">
-          <h2>এই প্যাকেজে যা থাকছে</h2>
-          <ul class="features">${p.features.map((f) => html`<li>${f}</li>`)}</ul>
-          <p class="muted">আনুমানিক ডেলিভারি: তথ্য পাওয়ার পর ${bnDigits(p.deliveryDays)} কর্মদিবস</p>
-        </div>
-        <div class="card prose"><h2>বিস্তারিত</h2>${paragraphs(p.description)}</div>
+        ${demos.length ? html`<div class="card demo-box">
+          <div class="demo-box-head"><strong>নিজে ক্লিক করে দেখুন</strong><span class="muted small">আসল, কাজ করা ডেমো — নতুন ট্যাবে খুলবে</span></div>
+          <div class="demo-btns">${demos.map((l, i) => demoLink(p, l.url, l.label, i === 0 ? 'btn btn-primary' : 'btn btn-ghost'))}</div>
+          ${p.demoLogin ? html`<p class="small muted demo-login">🔑 ${p.demoLogin}</p>` : ''}
+        </div>` : ''}
       </div>
 
       <aside class="pkg-right">
         <form class="card configurator" data-configurator>
-          <div class="pkg-tags"><span class="badge">${p.tier === 'premium' ? 'প্রিমিয়াম' : 'বেসিক'}</span>${offer ? offerBadge(offer) : ''}${avg ? html`<span class="badge">${stars(avg)} ${bnDigits(d.reviews.length)}</span>` : ''}</div>
+          <div class="pkg-tags"><span class="badge">${p.categoryName || tierLabel(p.tier)}</span>${offer ? offerBadge(offer) : ''}${avg ? html`<span class="badge">${stars(avg)} ${bnDigits(d.reviews.length)}</span>` : ''}</div>
           <h1>${p.name}</h1>
           <p class="muted">${p.shortDescription}</p>
           ${offer?.endsAt ? countdown(offer.endsAt, offer.title || 'অফার শেষ হবে') : ''}
           <div class="cfg-base"><span>মূল প্যাকেজ</span><strong>${taka(p.basePrice)}</strong></div>
-          ${p.addons.length ? html`<fieldset class="addons"><legend>অ্যাড-অন যোগ করুন</legend>
+          <ul class="cfg-facts"><li>⏱ তথ্য পাওয়ার পর ${bnDigits(p.deliveryDays)} কর্মদিবসে ডেলিভারি</li><li>🛡 পেমেন্ট নিশ্চিত হলেই কাজ শুরু</li><li>✎ আপনার লোগো, রং ও লেখা বসিয়ে দেওয়া হবে</li></ul>
+          ${p.addons.length ? html`<fieldset class="addons"><legend>অ্যাড-অন যোগ করুন (ঐচ্ছিক)</legend>
             ${p.addons.map((a) => a.maxQuantity > 1
               ? html`<div class="addon"><div class="addon-info"><strong>${a.name}</strong><small>${a.description}</small><span class="addon-price">প্রতিটি +${taka(a.priceDelta)}</span></div>
                   <div class="stepper" data-stepper><button type="button" data-step="-1" aria-label="কমান">−</button><input type="text" data-max="${a.maxQuantity}" value="০" name="addon-${a.id}" data-addon="${a.id}" aria-label="${a.name} সংখ্যা" inputmode="numeric" maxlength="2"><button type="button" data-step="1" aria-label="বাড়ান">+</button></div></div>`
@@ -169,19 +247,104 @@ export function packagePage(p: PublicPackage, d: { coupons: CouponRow[]; faqs: {
           </div>
           ${cs.map(couponChip)}
           ${soon
-            ? html`<p class="notice">এই প্যাকেজটি শীঘ্রই আসছে। আগ্রহী হলে কোটেশন ফর্মে জানান।</p>`
-            : html`<button class="btn btn-primary btn-lg btn-block" data-order-now>এখনই অর্ডার করুন</button>`}
-          <a class="btn btn-ghost btn-block" href="/quote?package=${p.slug}">কাস্টম চাহিদা? কোটেশন নিন</a>
+            ? html`<p class="notice">এই প্যাকেজটি শীঘ্রই আসছে। আগ্রহী হলে কোটেশন ফর্মে জানান।</p><a class="btn btn-primary btn-lg btn-block" href="/quote?package=${p.slug}">আগ্রহ জানান →</a>`
+            : html`<button class="btn btn-primary btn-lg btn-block" data-order-now>${orderLabel}</button>`}
+          <div class="cfg-alt">
+            ${d.whatsapp ? html`<a class="btn btn-whatsapp btn-block" href="${d.whatsapp}" target="_blank" rel="noopener" data-contact-click="whatsapp">💬 হোয়াটসঅ্যাপে প্রশ্ন করুন</a>` : html`<button type="button" class="btn btn-ghost btn-block" data-chat-open-alt>💬 প্রশ্ন আছে? চ্যাট করুন</button>`}
+            <a class="btn btn-ghost btn-block" href="/quote?package=${p.slug}">কাস্টম চাহিদা? ফ্রি কোটেশন নিন</a>
+          </div>
           <p class="small muted center">চূড়ান্ত দাম চেকআউটে সার্ভার থেকে যাচাই করা হয়</p>
         </form>
       </aside>
     </div>
-
-    ${d.faqs.length ? html`<section class="section-sm"><h2>এই প্যাকেজ নিয়ে প্রশ্ন</h2>${faqList(d.faqs)}</section>` : ''}
-    <section class="section-sm"><h2>ক্লায়েন্ট রিভিউ</h2>${d.reviews.length ? html`<div class="review-grid">${d.reviews.map(reviewCard)}</div>` : html`<p class="muted">এই প্যাকেজের এখনো কোনো রিভিউ নেই।</p>`}</section>
   </div>
 </section>
+
+<nav class="section-tabs" aria-label="এই পেজে"><div class="container">${nav.filter(([, , on]) => on).map(([id, l]) => html`<a href="#${id}">${l}</a>`)}</div></nav>
+
+${p.solution ? html`<section class="section-sm" id="solution"><div class="container"><div class="card solution-card"><span class="eyebrow">আপনার সমস্যার সমাধান</span><h2>এই সাইট আপনার জন্য কী করবে</h2>${paragraphs(p.solution)}</div></div></section>` : ''}
+
+${p.benefits.length ? html`<section class="section-sm" id="benefits"><div class="container"><h2>আপনার ব্যবসার লাভ</h2>${pointCards(p.benefits, '#')}</div></section>` : ''}
+
+<section class="section-sm" id="features"><div class="container">
+  <div class="feature-split">
+    <div class="card"><h2>এই প্যাকেজে যা থাকছে</h2><ul class="features">${p.features.map((f) => html`<li>${f}</li>`)}</ul>
+      <p class="muted">আনুমানিক ডেলিভারি: তথ্য পাওয়ার পর ${bnDigits(p.deliveryDays)} কর্মদিবস</p></div>
+    <div class="card prose"><h2>বিস্তারিত</h2>${paragraphs(p.description)}</div>
+  </div>
+</div></section>
+
+${p.video ? html`<section class="section-sm" id="video"><div class="container narrow"><h2>ভিডিওতে দেখুন</h2>${videoPlayer(p.video, `${p.name} — ডেমো ভিডিও`, p.cover, p)}</div></section>` : ''}
+
+${shots.length > 1 ? html`<section class="section-sm" id="screens"><div class="container">
+  <h2>সব স্ক্রিনশট</h2><p class="muted">ছবিতে ক্লিক করে বড় করে দেখুন</p>
+  <div class="shots-layout ${mobile ? 'has-phone' : ''}">
+    <div class="shot-grid">${wide.map((src, i) => html`<button type="button" class="shot" data-lightbox="${src}" data-caption="${p.name} — ${shotCaption(src, i)}"><img src="${src}" alt="${p.name} — ${shotCaption(src, i)}" loading="lazy" decoding="async"><span>${shotCaption(src, i)}</span></button>`)}</div>
+    ${mobile ? html`<div class="shot-phone">${phoneFrame(mobile, `${p.name} — মোবাইল ভিউ`)}<span class="muted small center">মোবাইল ভিউ</span></div>` : ''}
+  </div>
+  ${d.designs.length ? html`<p class="center"><a class="btn btn-ghost" href="/designs">অন্য ডিজাইনের সাথে তুলনা করুন →</a></p>` : ''}
+</div></section>` : ''}
+
+${whyUs.length ? html`<section class="section-sm" id="why"><div class="container"><h2>কেন আমাদের কাছ থেকে নেবেন</h2>${pointCards(whyUs, '★')}</div></section>` : ''}
+
+<section class="section-sm" id="reviews"><div class="container"><h2>ক্লায়েন্ট রিভিউ</h2>${d.reviews.length ? html`<div class="review-grid">${d.reviews.map(reviewCard)}</div>` : html`<p class="muted">এই প্যাকেজের এখনো কোনো রিভিউ নেই — অর্ডার সম্পন্ন হওয়া ক্লায়েন্টদের রিভিউ এখানে দেখাবে।</p>`}</div></section>
+
+${d.faqs.length ? html`<section class="section-sm" id="faq"><div class="container narrow"><h2>সাধারণ প্রশ্ন</h2>${faqList(d.faqs)}</div></section>` : ''}
+
+<section class="section-sm"><div class="container">
+  <div class="cta-band mesh">
+    <div><h2>আপনার ব্যবসার জন্য এই সাইটটি চান?</h2><p>আজ অর্ডার করুন — পেমেন্টের পর তথ্য দিলেই কাজ শুরু।</p></div>
+    <div class="cta-actions">${soon ? html`<a class="btn btn-light btn-lg" href="/quote?package=${p.slug}">আগ্রহ জানান</a>` : html`<button type="button" class="btn btn-light btn-lg" data-order-now-proxy>এখনই অর্ডার করুন — ${taka(p.basePrice)}</button>`}${demoLink(p, p.demoUrl, 'আগে ডেমো দেখুন', 'btn btn-outline-light btn-lg')}</div>
+  </div>
+</div></section>
+
+${d.related.length ? html`<section class="section-sm"><div class="container"><h2>এই ধরনের আরও সাইট</h2><div class="pkg-grid">${d.related.map((r) => packageCard(r, d.coupons, d.now))}</div></div></section>` : ''}
+
+${soon ? '' : html`<div class="sticky-cta" data-sticky-cta hidden><div><strong>${taka(p.basePrice)}</strong><span class="small muted">${p.name}</span></div><button type="button" class="btn btn-primary" data-order-now-proxy>অর্ডার করুন</button></div>`}
 ${jsonScript('pkg-data', p)}`;
+}
+
+export function portfolioPage(items: PortfolioView[]): Raw {
+  const cats = [...new Map(items.filter((w) => w.category_slug).map((w) => [w.category_slug!, { slug: w.category_slug!, name: w.category_name || '' }])).values()];
+  return html`
+<section class="page-hero mesh"><div class="container">
+  <nav class="crumbs" aria-label="অবস্থান"><a href="/">হোম</a> › <span>সফল ডেলিভারি</span></nav>
+  <h1>সফল ডেলিভারি</h1>
+  <p class="lead">আমাদের ক্লায়েন্টদের জন্য তৈরি ও ডেলিভারি করা সব সাইট — ক্লিক করে আসল সাইটটি ঘুরে দেখুন।</p>
+</div></section>
+<section class="section"><div class="container" data-filter-scope>
+  ${items.length ? html`${cats.length > 1 ? filterChips(cats, 'সব') : ''}<div class="work-grid">${items.map(portfolioCard)}</div>`
+    : html`<div class="card empty"><h2>শীঘ্রই এখানে আমাদের ডেলিভারি করা সাইট দেখাবো</h2><p class="muted">ততক্ষণে আমাদের রেডি ওয়েবসাইটগুলোর লাইভ ডেমো ঘুরে দেখুন।</p><a class="btn btn-primary" href="/packages">রেডি ওয়েবসাইট দেখুন →</a></div>`}
+  <div class="cta-band mesh" style="margin-top:2rem"><div><h2>আপনার সাইটও এখানে দেখতে চান?</h2><p>লাইভ ডেমো দেখে প্যাকেজ বাছুন — আমরা আপনার ব্যবসার জন্য বানিয়ে দেব।</p></div><div class="cta-actions"><a class="btn btn-light btn-lg" href="/packages">প্যাকেজ বাছাই করুন</a><a class="btn btn-outline-light btn-lg" href="/quote">ফ্রি কোটেশন নিন</a></div></div>
+</div></section>`;
+}
+
+export function designsPage(items: DesignView[], kind: string): Raw {
+  const kinds = DESIGN_KINDS.filter(([k]) => items.some((x) => x.kind === k));
+  const counts = Object.fromEntries(kinds.map(([k]) => [k, items.filter((x) => x.kind === k).length]));
+  return html`
+<section class="page-hero mesh"><div class="container">
+  <nav class="crumbs" aria-label="অবস্থান"><a href="/">হোম</a> › <span>ডিজাইন গ্যালারি</span></nav>
+  <h1>ডিজাইন গ্যালারি</h1>
+  <p class="lead">চেকআউট, সাইডবার, ফুটার, হেডার, পণ্যের পেজ — আমাদের তৈরি আসল সাইটের ডিজাইনগুলো পাশাপাশি দেখুন। যেটা পছন্দ, সেটাই আপনার সাইটে।</p>
+</div></section>
+<section class="section"><div class="container" data-filter-scope data-filter-attr="kind">
+  ${items.length ? html`
+  <div class="chip-row" data-filter-chips role="toolbar" aria-label="ডিজাইনের ধরন"><button type="button" class="chip ${kind ? '' : 'is-on'}" data-filter="">সব (${bnDigits(items.length)})</button>${kinds.map(([k, l]) => html`<button type="button" class="chip ${kind === k ? 'is-on' : ''}" data-filter="${k}">${l} (${bnDigits(counts[k])})</button>`)}</div>
+  <div class="design-grid" ${kind ? html`data-initial-filter="${kind}"` : ''}>${items.map(designCard)}</div>
+  ${buttonShowcase()}`
+    : html`<div class="card empty"><p>ডিজাইন শীঘ্রই যোগ হবে।</p><a class="btn btn-primary" href="/packages">রেডি ওয়েবসাইট দেখুন →</a></div>`}
+  <div class="cta-band mesh" style="margin-top:2rem"><div><h2>একাধিক ডিজাইন মিলিয়ে নিজের সাইট চান?</h2><p>এক সাইটের চেকআউট, আরেকটার ফুটার — জানিয়ে দিন, আমরা মিলিয়ে বানিয়ে দেব।</p></div><div class="cta-actions"><a class="btn btn-light btn-lg" href="/quote">ফ্রি কোটেশন নিন</a><a class="btn btn-outline-light btn-lg" href="/packages">রেডি সাইট দেখুন</a></div></div>
+</div></section>`;
+}
+
+/** Live button styles a client can point at ("এই বাটনটা চাই"). Rendered with real CSS, not screenshots. */
+function buttonShowcase(): Raw {
+  const styles: [string, string][] = [['bs-solid', 'সলিড'], ['bs-gradient', 'গ্রেডিয়েন্ট'], ['bs-outline', 'আউটলাইন'], ['bs-pill', 'পিল'], ['bs-soft', 'সফট'], ['bs-shadow', '৩ডি শ্যাডো'], ['bs-icon', 'আইকনসহ'], ['bs-glass', 'গ্লাস']];
+  return html`<section class="card button-lab" data-kind-block="button">
+  <h2>বাটন ডিজাইন</h2><p class="muted">আপনার সাইটের “অর্ডার করুন” বাটন কেমন হবে? যেটা পছন্দ, অর্ডারের সময় তার নাম লিখে দিন।</p>
+  <div class="bs-grid">${styles.map(([c, l]) => html`<div class="bs-item"><button type="button" class="bs ${c}">${c === 'bs-icon' ? html`<span aria-hidden="true">🛒</span> ` : ''}অর্ডার করুন</button><span class="small muted">${l}</span></div>`)}</div>
+</section>`;
 }
 
 export function checkoutPage(s: SiteSettings, methods: { id: string; label: string; hint: string }[]): Raw {
@@ -292,17 +455,24 @@ export function faqPage(faqs: { question: string; answer: string }[]): Raw {
 }
 
 export function contactPage(s: SiteSettings): Raw {
-  return html`<section class="page-hero mesh"><div class="container"><h1>যোগাযোগ</h1></div></section>
+  const wa = s.whatsapp_link || (s.whatsapp_number ? `https://wa.me/${s.whatsapp_number.replace(/\D/g, '')}` : '');
+  const fb = s.facebook_page ? (s.facebook_page.startsWith('http') ? s.facebook_page : `https://facebook.com/${s.facebook_page}`) : '';
+  return html`<section class="page-hero mesh"><div class="container"><h1>যোগাযোগ</h1><p class="lead">সবচেয়ে দ্রুত উত্তর পাবেন হোয়াটসঅ্যাপে</p></div></section>
 <section class="section"><div class="container contact-grid">
   <div class="card">
     <h2>সরাসরি যোগাযোগ</h2>
+    <div class="contact-cta">
+      ${wa ? html`<a class="btn btn-whatsapp btn-lg btn-block" href="${safeUrl(wa)}" target="_blank" rel="noopener" data-contact-click="whatsapp">💬 হোয়াটসঅ্যাপে মেসেজ দিন</a>` : ''}
+      <button type="button" class="btn btn-primary btn-block" data-leadbox-open data-leadbox-from="contact">২ মিনিটে ফ্রি পরামর্শ নিন →</button>
+    </div>
     <dl class="kv">
-      ${s.contact_phone ? html`<dt>ফোন</dt><dd><a href="tel:${s.contact_phone}">${s.contact_phone}</a></dd>` : ''}
+      ${s.contact_phone ? html`<dt>ফোন / হোয়াটসঅ্যাপ</dt><dd><a href="tel:${s.contact_phone.replace(/[^\d+]/g, '')}">${s.contact_phone}</a></dd>` : ''}
       ${s.contact_email ? html`<dt>ইমেইল</dt><dd><a href="mailto:${s.contact_email}">${s.contact_email}</a></dd>` : ''}
-      ${s.contact_address ? html`<dt>ঠিকানা</dt><dd>${s.contact_address}</dd>` : ''}
+      ${s.support_email ? html`<dt>সাপোর্ট</dt><dd><a href="mailto:${s.support_email}">${s.support_email}</a></dd>` : ''}
+      ${fb ? html`<dt>ফেসবুক</dt><dd><a href="${safeUrl(fb)}" target="_blank" rel="noopener">${fb.replace(/^https?:\/\//, '')}</a></dd>` : ''}
+      ${s.contact_address ? html`<dt>ঠিকানা</dt><dd>${s.contact_address}${s.map_url ? html` · <a href="${safeUrl(s.map_url)}" target="_blank" rel="noopener">ম্যাপে দেখুন ↗</a>` : ''}</dd>` : ''}
       ${s.business_hours ? html`<dt>সময়</dt><dd>${s.business_hours}</dd>` : ''}
     </dl>
-    <p class="muted">দ্রুত উত্তরের জন্য নিচের ডান কোণের চ্যাট বাটন ব্যবহার করুন।</p>
   </div>
   ${leadForm({ source: 'contact', title: 'বার্তা পাঠান' })}
 </div></section>`;

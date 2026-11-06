@@ -43,6 +43,10 @@ export interface Env {
   WHATSAPP_PHONE_NUMBER_ID?: string;
   WHATSAPP_TEMPLATE?: string;
   ADMIN_ALERT_EMAIL?: string;
+  /** New-lead alerts (all optional): Telegram bot → chat, and any webhook (Discord, Slack, Make/Zapier, CallMeBot…). */
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_CHAT_ID?: string;
+  LEAD_WEBHOOK_URL?: string;
 }
 
 export interface AdminUser {

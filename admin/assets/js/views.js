@@ -5,7 +5,7 @@ const psLabel = (k) => PS().find((s) => s.key === k)?.label || k;
 const PAY = { unpaid: ['পরিশোধ হয়নি', 'bad'], pending_verification: ['যাচাই প্রয়োজন', 'warn'], paid: ['পরিশোধিত', 'ok'], failed: ['ব্যর্থ', 'bad'], refunded: ['ফেরত', 'info'] };
 export const payPill = (s) => statusPill(...(PAY[s] || [s]));
 export const projPill = (s) => statusPill(psLabel(s), s === 'completed' ? 'ok' : s === 'cancelled' ? 'bad' : s === 'pending_payment' ? 'warn' : 'info');
-const SRC = { quote: 'কোটেশন', chat: 'চ্যাট', quiz: 'কুইজ', landing: 'ল্যান্ডিং পেজ', contact: 'যোগাযোগ' };
+const SRC = { leadbox: 'লিড বক্স', quote: 'কোটেশন', chat: 'চ্যাট', quiz: 'কুইজ', landing: 'ল্যান্ডিং পেজ', contact: 'যোগাযোগ' };
 const LEAD = { new: 'নতুন', contacted: 'যোগাযোগ হয়েছে', follow_up: 'ফলো-আপ', won: 'অর্ডার হয়েছে', lost: 'হারানো' };
 export { SRC, LEAD };
 const METHOD = { bkash: 'বিকাশ', nagad: 'নগদ', rocket: 'রকেট', card: 'কার্ড', bank_transfer: 'ব্যাংক', stripe: 'আন্তর্জাতিক কার্ড', sslcommerz: 'এসএসএলকমার্জ' };
@@ -181,7 +181,7 @@ export function leadsView(root) {
     filters: [{ name: 'status', label: 'অবস্থা', options: Object.entries(LEAD) }, { name: 'source', label: 'উৎস', options: Object.entries(SRC) }],
     columns: [
       { label: 'নাম', render: (l) => `<a href="#/leads/${l.id}">${esc(l.name)}</a><br><span class="muted small">${esc(l.phone)}</span>` },
-      { label: 'উৎস', render: (l) => esc(SRC[l.source] || l.source) },
+      { label: 'উৎস', render: (l) => esc(SRC[l.source] || l.source) + (l.is_internal ? ' ' + statusPill('টেস্ট', 'warn') : '') },
       { label: 'বার্তা', render: (l) => `<span class="small">${esc((l.message || '').slice(0, 90))}</span>` },
       { label: 'অবস্থা', render: (l) => statusPill(LEAD[l.status] || l.status, l.status === 'won' ? 'ok' : l.status === 'lost' ? 'bad' : l.status === 'new' ? 'warn' : 'info') },
       { label: 'ক্যাম্পেইন', render: (l) => `<span class="small">${esc(l.utm_campaign || '—')}</span>` },
@@ -203,7 +203,7 @@ export async function openLead(id, reload) {
     title: `লিড: ${l.name}`,
     fields,
     values: l,
-    extra: `<div class="card"><dl class="kv"><dt>ফোন</dt><dd><a href="tel:+${esc(l.phone)}">${esc(l.phone)}</a> · <a href="${waLink(l.phone)}" target="_blank" rel="noopener">হোয়াটসঅ্যাপ</a></dd><dt>ইমেইল</dt><dd>${esc(l.email || '—')}</dd><dt>ব্যবসা</dt><dd>${esc(l.business_name || '—')}</dd><dt>উৎস</dt><dd>${esc(SRC[l.source])}</dd>${l.package_name ? `<dt>প্যাকেজ</dt><dd>${esc(l.package_name)}</dd>` : ''}<dt>ক্যাম্পেইন</dt><dd>${esc([l.utm_source, l.utm_campaign, l.utm_content].filter(Boolean).join(' / ') || '—')}</dd><dt>স্বয়ংক্রিয় ফলো-আপ</dt><dd>${bn(l.auto_followups_sent)}টি পাঠানো হয়েছে</dd></dl><p style="white-space:pre-wrap;margin-top:.6rem">${esc(l.message)}</p>${l.quiz_result ? `<p class="small muted">কুইজ: ${esc(l.quiz_result)}</p>` : ''}</div>`,
+    extra: `<div class="card"><dl class="kv"><dt>ফোন</dt><dd><a href="tel:+${esc(l.phone)}">${esc(l.phone)}</a> · <a href="${waLink(l.phone)}" target="_blank" rel="noopener">হোয়াটসঅ্যাপ</a></dd><dt>ইমেইল</dt><dd>${esc(l.email || '—')}</dd><dt>ব্যবসা</dt><dd>${esc(l.business_name || '—')}</dd><dt>উৎস</dt><dd>${esc(SRC[l.source])}</dd>${l.package_name ? `<dt>প্যাকেজ</dt><dd>${esc(l.package_name)}</dd>` : ''}<dt>ক্যাম্পেইন</dt><dd>${esc([l.utm_source, l.utm_campaign, l.utm_content].filter(Boolean).join(' / ') || '—')}</dd><dt>স্বয়ংক্রিয় ফলো-আপ</dt><dd>${bn(l.auto_followups_sent)}টি পাঠানো হয়েছে</dd></dl><p style="white-space:pre-wrap;margin-top:.6rem">${esc(l.message)}</p>${l.source !== 'leadbox' && l.quiz_result ? `<p class="small muted">কুইজ: ${esc(l.quiz_result)}</p>` : ''}${l.is_internal ? `<p>${statusPill('অভ্যন্তরীণ/টেস্ট — বিজ্ঞাপন ও রিপোর্টে গোনা হয় না', 'warn')}</p>` : ''}<p style="margin-top:.6rem"><a class="btn primary sm" href="${waLink(l.phone)}?text=${encodeURIComponent(`আসসালামু আলাইকুম ${l.name}, ${state.me?.name ? '' : ''}আপনার ওয়েবসাইটের চাহিদা নিয়ে কথা বলতে চাই।`)}" target="_blank" rel="noopener">💬 হোয়াটসঅ্যাপে উত্তর দিন</a></p></div>`,
     onSubmit: async (data) => { await api(`/leads/${id}`, { method: 'PUT', body: data }); reload?.(); },
   });
 }
@@ -217,16 +217,22 @@ export async function packageEditor(root, id) {
     { name: 'category_id', label: 'ক্যাটাগরি', type: 'select', options: cats, required: true, numeric: true },
     { name: 'name', label: 'প্যাকেজের নাম', required: true, max: 150 },
     { name: 'slug', label: 'স্লাগ (ইউআরএল)', required: true, pattern: '[a-z0-9]+(-[a-z0-9]+)*', hint: 'ছোট হাতের ইংরেজি অক্ষর ও হাইফেন, যেমন fashion-premium' },
-    { name: 'tier', label: 'স্তর', type: 'select', options: [['basic', 'বেসিক'], ['premium', 'প্রিমিয়াম'], ['custom', 'কাস্টম']], required: true },
+    { name: 'tier', label: 'স্তর', type: 'select', options: [['standard', 'রেডি সাইট'], ['basic', 'বেসিক'], ['premium', 'প্রিমিয়াম'], ['custom', 'কাস্টম']], required: true },
     { name: 'base_price', label: 'মূল দাম (৳)', type: 'number', min: 0, required: true },
     { name: 'delivery_days', label: 'ডেলিভারি (কর্মদিবস)', type: 'number', min: 1 },
     { name: 'status', label: 'অবস্থা', type: 'select', options: [['active', 'সক্রিয়'], ['inactive', 'নিষ্ক্রিয়'], ['coming_soon', 'শীঘ্রই আসছে']], required: true },
-    { name: 'demo_url', label: 'লাইভ ডেমো লিংক', inputType: 'url', placeholder: 'https://' },
-    { name: 'short_description', label: 'সংক্ষিপ্ত বিবরণ', type: 'textarea', rows: 2, max: 300 },
-    { name: 'description', label: 'বিস্তারিত বিবরণ', type: 'textarea', rows: 7, max: 8000 },
+    { name: 'demo_url', label: 'লাইভ ডেমো লিংক (মূল বোতাম)', inputType: 'url', placeholder: 'https://' },
+    { name: 'demo_links', label: 'আরও ডেমো বোতাম — যেমন অ্যাডমিন প্যানেল', type: 'links', hint: 'যেমন: অ্যাডমিন প্যানেল ডেমো | https://…' },
+    { name: 'demo_login', label: 'ডেমো লগইন তথ্য (ডেমো বোতামের নিচে দেখাবে)', max: 300, placeholder: 'অ্যাডমিন: demo / demo12345' },
+    { name: 'short_description', label: 'সংক্ষিপ্ত বিবরণ (কার্ডে দেখায়)', type: 'textarea', rows: 2, max: 300 },
+    { name: 'solution', label: 'সমাধান — এই সাইট ক্লায়েন্টের কোন সমস্যা মেটাবে', type: 'textarea', rows: 4, max: 3000 },
+    { name: 'benefits', label: 'ক্লায়েন্টের লাভ', type: 'list', rows: 4, hint: 'প্রতি লাইনে: শিরোনাম | বিবরণ' },
     { name: 'features', label: 'ফিচার তালিকা', type: 'list' },
-    { name: 'images', label: 'স্ক্রিনশট', type: 'images' },
-    { name: 'demo_video_key', label: 'ডেমো ভিডিও (ছোট স্ক্রিন রেকর্ডিং, এমপি৪/ওয়েবএম)', type: 'image', accept: 'video/mp4,video/webm' },
+    { name: 'description', label: 'বিস্তারিত বিবরণ', type: 'textarea', rows: 7, max: 8000 },
+    { name: 'why_us', label: 'কেন আমরা সেরা (এই প্যাকেজের জন্য আলাদা হলে)', type: 'list', rows: 4, hint: 'খালি রাখলে সিস্টেম সেটিংসের সাধারণ তালিকা দেখাবে · প্রতি লাইনে: শিরোনাম | বিবরণ' },
+    { name: 'cover_image', label: 'কভার ছবি (কার্ড ও শেয়ারে দেখায়)', type: 'image' },
+    { name: 'images', label: 'স্ক্রিনশট গ্যালারি', type: 'images' },
+    { name: 'video_url', label: 'বিস্তারিত ভিডিও — ইউটিউব / ফেসবুক / ভিমিও / গুগল ড্রাইভ লিংক অথবা ফাইল আপলোড', type: 'video' },
     { name: 'is_featured', label: 'হোমপেজে দেখান', type: 'bool' },
     { name: 'sort_order', label: 'ক্রম', type: 'number' },
   ];
@@ -482,7 +488,11 @@ export async function settingsView(root) {
   const { settings: s, env } = await api('/settings');
   const groups = [
     ['ব্র্যান্ড ও যোগাযোগ', [['brand_name', 'ব্র্যান্ডের নাম'], ['brand_tagline', 'ট্যাগলাইন', 'textarea'], ['contact_phone', 'ফোন'], ['contact_email', 'ইমেইল'], ['contact_address', 'ঠিকানা'], ['business_hours', 'কাজের সময়']]],
-    ['ট্র্যাকিং', [['meta_pixel_id', 'মেটা পিক্সেল আইডি'], ['ga4_id', 'জিএ৪ মেজারমেন্ট আইডি'], ['gtm_id', 'গুগল ট্যাগ ম্যানেজার আইডি'], ['clarity_id', 'মাইক্রোসফট ক্ল্যারিটি আইডি']]],
+    ['ট্র্যাকিং', [['meta_pixel_id', 'মেটা পিক্সেল আইডি'], ['ga4_id', 'জিএ৪ মেজারমেন্ট আইডি'], ['gtm_id', 'গুগল ট্যাগ ম্যানেজার আইডি'], ['ga4_via_gtm', 'জিএ৪ জিটিএম-এর ভেতর থেকে চলে (তাহলে সাইট আলাদা করে জিএ৪ লোড করবে না — দুবার গোনা বন্ধ)', 'bool'], ['clarity_id', 'মাইক্রোসফট ক্ল্যারিটি আইডি'], ['meta_test_event_code', 'মেটা টেস্ট ইভেন্ট কোড (শুধু পরীক্ষার সময় — শেষে মুছে দিন)']]],
+    ['যোগাযোগের তথ্য (ফুটার ও যোগাযোগ পেজে দেখায়)', [['whatsapp_number', 'হোয়াটসঅ্যাপ নম্বর (লিড বক্সের পর এই নম্বরে মেসেজ খুলবে)'], ['whatsapp_link', 'হোয়াটসঅ্যাপ শর্ট লিংক (wa.me/message/…)'], ['support_email', 'সাপোর্ট ইমেইল'], ['facebook_page', 'ফেসবুক পেজ ইউজারনেম'], ['map_url', 'গুগল ম্যাপ লিংক']]],
+    ['লিড বক্স (প্রথম ভিজিটে ধাপে ধাপে প্রশ্ন)', [['lead_box_enabled', 'লিড বক্স চালু', 'bool'], ['lead_box_delay', 'কত সেকেন্ড পর নিজে থেকে খুলবে', 'number'], ['lead_box_title', 'প্রথম প্রশ্ন'], ['lead_box_auto_whatsapp', 'ফোনে সাবমিটের পর সরাসরি হোয়াটসঅ্যাপ খুলবে', 'bool'], ['booking_url', 'কল বুকিং লিংক (ঐচ্ছিক — Calendly / Google Calendar)']]],
+    ['নতুন লিডের সাথে সাথে নোটিফিকেশন', [['lead_alert_emails', 'যে ইমেইলে লিড যাবে (কমা দিয়ে একাধিক)']]],
+    ['কেন আমরা সেরা', [['why_us', 'প্রতি লাইনে একটি পয়েন্ট — শিরোনাম | বিবরণ (হোমপেজ ও প্রতিটি প্যাকেজ পেজে দেখায়)', 'textarea']]],
     ['পেমেন্ট', [['pay_sslcommerz_enabled', 'এসএসএলকমার্জ (বিকাশ/নগদ/রকেট/কার্ড) চালু', 'bool'], ['pay_bank_enabled', 'ব্যাংক ট্রান্সফার চালু', 'bool'], ['bank_details', 'ব্যাংকের তথ্য', 'textarea'], ['pay_manual_mfs_enabled', 'ম্যানুয়াল সেন্ড মানি চালু (গেটওয়ে না থাকলে)', 'bool'], ['manual_bkash_number', 'বিকাশ নম্বর'], ['manual_nagad_number', 'নগদ নম্বর'], ['manual_rocket_number', 'রকেট নম্বর'], ['pay_stripe_enabled', 'আন্তর্জাতিক কার্ড (স্ট্রাইপ) চালু', 'bool'], ['usd_rate', '১ ডলার = কত টাকা', 'number']]],
     ['অটোমেশন', [['lead_followup_hours', 'কত ঘণ্টা পর স্বয়ংক্রিয় ফলো-আপ', 'number'], ['lead_followup_max', 'সর্বোচ্চ স্বয়ংক্রিয় ফলো-আপ', 'number'], ['stuck_threshold_days', 'কত দিন একই ধাপে থাকলে সতর্কতা', 'number'], ['referral_enabled', 'রেফারেল প্রোগ্রাম চালু', 'bool'], ['referral_percent', 'রেফারেল ছাড় (%)', 'number']]],
     ['পেজের লেখা', [['page_about', 'আমাদের সম্পর্কে', 'textarea'], ['page_refund', 'রিফান্ড নীতি', 'textarea'], ['page_terms', 'শর্তাবলি', 'textarea'], ['page_privacy', 'গোপনীয়তা নীতি', 'textarea']]],
@@ -490,10 +500,100 @@ export async function settingsView(root) {
   const fields = groups.flatMap(([, fs]) => fs.map(([name, label, type]) => ({ name, label, type: type || 'text', rows: 5, max: 20000 })));
   root.innerHTML = `<div class="page-head"><h1>সিস্টেম সেটিংস</h1></div>
     <p class="small muted">পরিবেশ: <b>${esc(env.appEnv)}</b> · পেমেন্ট মোড: <b>${env.paymentMode === 'live' ? 'লাইভ' : 'স্যান্ডবক্স (পারচেজ ইভেন্ট পাঠানো হয় না)'}</b> · ${esc(env.siteUrl)}</p>
-    <form class="grid" style="max-width:820px">${groups.map(([title, fs]) => `<div class="card grid"><h2>${esc(title)}</h2>${fs.map(([name]) => fieldHtml(fields.find((f) => f.name === name), s[name])).join('')}</div>`).join('')}
+    <form class="grid" style="max-width:820px">${groups.map(([title, fs]) => `<div class="card grid"><h2>${esc(title)}</h2>${fs.map(([name]) => fieldHtml(fields.find((f) => f.name === name), s[name])).join('')}${title.startsWith('নতুন লিডের') ? `<p class="small muted">ইমেইল যায় Resend দিয়ে (RESEND_API_KEY ও EMAIL_FROM সিক্রেট লাগবে)। টেলিগ্রামে পেতে GitHub সিক্রেট TELEGRAM_BOT_TOKEN ও TELEGRAM_CHAT_ID দিন; ডিসকর্ড/স্ল্যাক/মেক/জ্যাপিয়ার বা হোয়াটসঅ্যাপ গেটওয়েতে পেতে LEAD_WEBHOOK_URL দিন — তারপর ডিপ্লয় আবার চালান। কোনটা কাজ করছে তা “ট্র্যাকিং ও বিজ্ঞাপন” পেজের নিচে দেখা যায়।</p>` : ''}</div>`).join('')}
     ${can('settings.write') ? '<button class="btn primary" style="width:max-content">সংরক্ষণ করুন</button>' : ''}</form>`;
   const form = $('form', root);
   form.addEventListener('submit', async (e) => { e.preventDefault(); try { await api('/settings', { method: 'PUT', body: readForm(form, fields) }); toast('সংরক্ষিত হয়েছে'); } catch (err) { toast(err.message, true); } });
+}
+
+/* ================= Tracking diagnostics & ad link builder ================= */
+const EVENT_BN = { PageView: 'পেজ ভিউ', ViewContent: 'প্যাকেজ দেখা', Lead: 'লিড', InitiateCheckout: 'চেকআউট শুরু', Purchase: 'পারচেজ' };
+const ST_BN = { sent: ['পাঠানো হয়েছে', 'ok'], failed: ['ব্যর্থ', 'bad'], skipped: ['বাদ দেওয়া', 'warn'] };
+const SKIP_BN = { internal_traffic: 'আপনার নিজের/টেস্ট ভিজিট', bot: 'বট/ক্রলার', no_pixel: 'পিক্সেল আইডি নেই', network: 'নেটওয়ার্ক সমস্যা' };
+
+export async function trackingView(root) {
+  const d = await api('/tracking');
+  const c = d.config;
+  const pkgs = state.lookups.packages || [];
+  const yes = (v, t = 'চালু') => (v ? statusPill(t, 'ok') : statusPill('নেই', 'bad'));
+  root.innerHTML = `
+  <div class="page-head"><h1>ট্র্যাকিং ও বিজ্ঞাপন</h1><div class="actions"><a class="btn" href="#/settings">ট্র্যাকিং সেটিংস</a></div></div>
+  ${d.warnings.map((w) => `<div class="card note-${w.level}" style="margin-bottom:.6rem">${esc(w.text)}</div>`).join('')}
+  <div class="grid g2">
+    <div class="card"><h2>কী চালু আছে</h2><dl class="kv">
+      <dt>মেটা পিক্সেল (ব্রাউজার)</dt><dd>${c.pixelId ? `${statusPill('চালু', 'ok')} <span class="small">${esc(c.pixelId)}</span>` : statusPill('নেই', 'bad')}</dd>
+      <dt>কনভার্সন এপিআই (সার্ভার)</dt><dd>${yes(c.capiToken && c.appEnv === 'production')}</dd>
+      <dt>জিএ৪</dt><dd>${c.ga4 ? `${statusPill(c.ga4ViaGtm ? 'জিটিএম-এর ভেতর থেকে' : 'সরাসরি', 'ok')} <span class="small">${esc(c.ga4)}</span>` : statusPill('নেই', 'warn')}</dd>
+      <dt>গুগল ট্যাগ ম্যানেজার</dt><dd>${c.gtm ? `${statusPill('চালু', 'ok')} <span class="small">${esc(c.gtm)}</span>` : statusPill('নেই', 'warn')}</dd>
+      <dt>ক্ল্যারিটি</dt><dd>${c.clarity ? statusPill('চালু', 'ok') : statusPill('ঐচ্ছিক')}</dd>
+      <dt>পেমেন্ট মোড</dt><dd>${c.paymentMode === 'live' ? statusPill('লাইভ — আসল পেমেন্টে পারচেজ যায়', 'ok') : statusPill('স্যান্ডবক্স — পারচেজ বন্ধ', 'warn')}</dd>
+      <dt>সাইট</dt><dd class="small">${esc(c.publicOrigin)}${c.publicOrigin !== c.workerOrigin ? `<br>পেমেন্ট/অর্ডার পেজ: ${esc(c.workerOrigin)} (জিএ৪ ক্রস-ডোমেইন চালু)` : ''}</dd>
+    </dl>
+    <h3 style="margin-top:1rem">কোন ইভেন্ট কখন যায়</h3>
+    <ul class="small">
+      <li><b>PageView</b> — প্রতিটি পেজে (ব্রাউজার + সার্ভার, একই event_id)</li>
+      <li><b>ViewContent</b> — প্যাকেজ পেজ খুললে</li>
+      <li><b>AddToCart</b> — “অর্ডার করুন” চাপলে (শুধু ব্রাউজার)</li>
+      <li><b>InitiateCheckout</b> — সার্ভারে অর্ডার তৈরি হলে</li>
+      <li><b>Lead</b> — কোটেশন/যোগাযোগ ফর্ম জমা হলে</li>
+      <li><b>Purchase</b> — শুধু গেটওয়ে-নিশ্চিত আসল পেমেন্টে (লাইভ মোড)</li>
+      <li><b>DemoClick · VideoPlay · PortfolioClick · Contact</b> — কাস্টম/এনগেজমেন্ট ইভেন্ট, অডিয়েন্স বানানোর জন্য; কখনো “পারচেজ” হিসেবে অপ্টিমাইজ করবেন না</li>
+    </ul>
+    <p class="small muted">নিজের ভিজিট বাদ দিতে নিজের ফোন/কম্পিউটারে একবার খুলুন: <code>${esc(c.publicOrigin)}/?sb_internal=1</code> — এরপর সেই ব্রাউজারে কোনো পিক্সেল/অ্যানালিটিক্স চলবে না, অর্ডার/লিড “অভ্যন্তরীণ” হিসেবে চিহ্নিত হবে (রিপোর্টে গোনা হবে না)। গত ৩০ দিনে: ${bn(d.internal.orders)}টি অর্ডার, ${bn(d.internal.leads)}টি লিড।</p>
+    ${can('settings.write') ? `<button class="btn sm" data-test-event ${c.testEventCode ? '' : 'disabled'}>টেস্ট ইভেন্ট পাঠান</button> <span class="small muted">${c.testEventCode ? `কোড ${esc(c.testEventCode)} — ইভেন্টস ম্যানেজার › Test events-এ দেখুন` : 'আগে সেটিংসে টেস্ট ইভেন্ট কোড দিন'}</span>` : ''}
+    </div>
+    <div class="card"><h2>সার্ভার ইভেন্ট — গত ৭ দিন</h2>
+      <div class="table-wrap"><table><thead><tr><th>ইভেন্ট</th><th>অবস্থা</th><th>সংখ্যা</th><th>শেষ</th></tr></thead><tbody>
+      ${d.stats.map((r) => `<tr><td>${esc(EVENT_BN[r.event] || r.event)}</td><td>${statusPill(...(ST_BN[r.status] || [r.status]))}</td><td>${bn(r.n)}</td><td class="small">${fmtDate(r.last_at)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">এখনো কোনো ইভেন্ট নেই</td></tr>'}
+      </tbody></table></div>
+      <p class="small muted">সফল পেজ ভিউ/প্যাকেজ দেখা ইভেন্ট ২০টিতে ১টি করে লগ হয় (ডেটাবেস বাঁচাতে); ব্যর্থ ও বাকি সব ইভেন্ট পুরোটা লগ হয়।</p>
+    </div>
+  </div>
+  <div class="card" style="margin-top:1rem"><h2>বিজ্ঞাপনের লিংক বানান</h2>
+    <p class="small muted">এই লিংক বিজ্ঞাপনে দিলে প্রতিটি অর্ডার/লিড কোন ক্যাম্পেইন ও কোন বিজ্ঞাপন থেকে এল তা রিপোর্টে আলাদা দেখা যাবে।</p>
+    <form class="grid g2" data-linkb>
+      <label>কোন পেজে নেবে<select name="page"><option value="/">হোমপেজ</option><option value="/packages">সব প্যাকেজ</option><option value="/designs">ডিজাইন গ্যালারি</option><option value="/portfolio">সফল ডেলিভারি</option>${pkgs.map((p) => `<option value="/package/${esc(p.slug)}">প্যাকেজ: ${esc(p.name)}</option>`).join('')}</select></label>
+      <label>প্ল্যাটফর্ম<select name="src"><option value="facebook|paid_social">ফেসবুক/ইনস্টাগ্রাম বিজ্ঞাপন</option><option value="google|cpc">গুগল বিজ্ঞাপন</option><option value="facebook|organic">ফেসবুক পোস্ট (ফ্রি)</option><option value="whatsapp|message">হোয়াটসঅ্যাপ</option></select></label>
+      <label>ক্যাম্পেইনের নাম<input name="campaign" placeholder="যেমন: nov-ecommerce-10k"></label>
+      <label>বিজ্ঞাপন/ক্রিয়েটিভের নাম<input name="content" placeholder="যেমন: video-gadget-1"></label>
+      <label class="chk" style="grid-column:1/-1"><input type="checkbox" name="dynamic" checked> মেটার ডায়নামিক নাম ব্যবহার করুন ({{campaign.name}}, {{ad.name}}, {{adset.name}}) — একই লিংক সব বিজ্ঞাপনে চলবে</label>
+    </form>
+    <div style="display:flex;gap:.5rem;align-items:center;margin-top:.6rem"><input data-link-out readonly style="flex:1"><button class="btn primary sm" data-copy-link>কপি</button></div>
+  </div>
+  <div class="card" style="margin-top:1rem"><h2>সাম্প্রতিক সার্ভার ইভেন্ট</h2><div class="table-wrap"><table><thead><tr><th>সময়</th><th>ইভেন্ট</th><th>অবস্থা</th><th>বিস্তারিত</th></tr></thead><tbody>
+    ${d.recent.map((r) => `<tr><td class="small">${fmtDate(r.created_at)}</td><td>${esc(EVENT_BN[r.event] || r.event)}</td><td>${statusPill(...(ST_BN[r.status] || [r.status]))}${r.http_status ? ` <span class="small muted">${bn(r.http_status)}</span>` : ''}</td><td class="small"><code>${esc(SKIP_BN[r.detail] || r.detail || '—')}</code></td></tr>`).join('') || '<tr><td colspan="4" class="empty">এখনো কিছু নেই</td></tr>'}
+  </tbody></table></div></div>`;
+
+  // Lead alerts & client messages actually sent (email / Telegram / webhook / SMS / WhatsApp).
+  const CH = { email: 'ইমেইল', telegram: 'টেলিগ্রাম', webhook: 'ওয়েবহুক', sms: 'এসএমএস', whatsapp: 'হোয়াটসঅ্যাপ' };
+  const NS = { sent: ['পাঠানো হয়েছে', 'ok'], failed: ['ব্যর্থ', 'bad'], skipped: ['সেটআপ নেই', 'warn'] };
+  const logs = await api('/notification-log').catch(() => []);
+  root.insertAdjacentHTML('beforeend', `<div class="card" style="margin-top:1rem"><h2>নোটিফিকেশন লগ (নতুন লিড অ্যালার্ট ও ক্লায়েন্ট মেসেজ)</h2>
+    <div class="table-wrap"><table><thead><tr><th>সময়</th><th>মাধ্যম</th><th>প্রাপক</th><th>বিষয়</th><th>অবস্থা</th></tr></thead><tbody>
+    ${logs.slice(0, 40).map((n) => `<tr><td class="small">${fmtDate(n.created_at)}</td><td>${esc(CH[n.channel] || n.channel)}</td><td class="small">${esc(n.recipient)}</td><td class="small">${esc(n.subject)}</td><td>${statusPill(...(NS[n.status] || [n.status]))}${n.error && n.status !== 'skipped' ? ` <span class="small muted">${esc(n.error)}</span>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">এখনো কিছু পাঠানো হয়নি</td></tr>'}
+    </tbody></table></div></div>`);
+
+  const f = $('[data-linkb]', root);
+  const out = $('[data-link-out]', root);
+  const build = () => {
+    const [source, medium] = f.src.value.split('|');
+    const u = new URL(c.publicOrigin + f.page.value);
+    u.searchParams.set('utm_source', source);
+    u.searchParams.set('utm_medium', medium);
+    const dyn = f.dynamic.checked && source === 'facebook' && medium === 'paid_social';
+    u.searchParams.set('utm_campaign', dyn ? '{{campaign.name}}' : (f.campaign.value.trim() || 'campaign'));
+    u.searchParams.set('utm_content', dyn ? '{{ad.name}}' : (f.content.value.trim() || 'ad'));
+    if (dyn) u.searchParams.set('utm_term', '{{adset.name}}');
+    // Meta needs the braces literally, so don't percent-encode them.
+    out.value = u.toString().replace(/%7B/g, '{').replace(/%7D/g, '}');
+  };
+  f.addEventListener('input', build);
+  f.addEventListener('change', build);
+  build();
+  $('[data-copy-link]', root).addEventListener('click', async () => { try { await navigator.clipboard.writeText(out.value); toast('লিংক কপি হয়েছে'); } catch { out.select(); } });
+  $('[data-test-event]', root)?.addEventListener('click', async () => {
+    try { const r = await api('/tracking/test-event', { method: 'POST', body: {} }); toast(r.sent ? 'পাঠানো হয়েছে — ইভেন্টস ম্যানেজার › Test events দেখুন' : `পাঠানো যায়নি: ${r.reason}`, !r.sent); trackingView(root); } catch (err) { toast(err.message, true); }
+  });
 }
 
 /* ================= Help ================= */

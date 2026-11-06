@@ -2,7 +2,7 @@ import type { Env } from '../env';
 import { getSettings } from './settings';
 import { sendAll } from './notify';
 import { notifyAdmins } from './audit';
-import { nowIso } from './util';
+import { nowIso, publicOrigin } from './util';
 
 const GUARD = 'maint:last-run';
 
@@ -27,20 +27,23 @@ export async function runScheduled(env: Env): Promise<void> {
   // 1) Automated follow-up for quote requests / leads that went quiet.
   const due = (
     await env.DB.prepare(
-      `SELECT * FROM leads WHERE status IN ('new','follow_up') AND next_follow_up_at IS NOT NULL AND next_follow_up_at <= ? AND auto_followups_sent < ? LIMIT 25`,
+      `SELECT * FROM leads WHERE is_internal = 0 AND status IN ('new','follow_up') AND next_follow_up_at IS NOT NULL AND next_follow_up_at <= ? AND auto_followups_sent < ? LIMIT 25`,
     ).bind(now, s.lead_followup_max).all<{ id: number; name: string; phone: string; email: string; auto_followups_sent: number }>()
   ).results;
   for (const l of due) {
     await sendAll(env, {
       to: { phone: l.phone, email: l.email },
       subject: 'আপনার ওয়েবসাইটের অনুরোধ',
-      text: `প্রিয় ${l.name}, আপনার ওয়েবসাইটের অনুরোধটি আমরা পেয়েছি। কোনো প্রশ্ন থাকলে এই মেসেজের উত্তর দিন অথবা ${env.SITE_URL} এ চ্যাট করুন। — ${s.brand_name}`,
+      text: `প্রিয় ${l.name}, আপনার ওয়েবসাইটের অনুরোধটি আমরা পেয়েছি। কোনো প্রশ্ন থাকলে এই মেসেজের উত্তর দিন অথবা ${publicOrigin(env)} এ চ্যাট করুন। — ${s.brand_name}`,
       leadId: l.id,
     }, [l.name, s.brand_name]);
     await env.DB.prepare("UPDATE leads SET auto_followups_sent = auto_followups_sent + 1, status = 'follow_up', next_follow_up_at = ?, updated_at = ? WHERE id = ?")
       .bind(new Date(Date.now() + s.lead_followup_hours * 2 * 3600_000).toISOString(), now, l.id).run();
   }
 
+  // Tracking diagnostics keep 30 days.
+  await env.DB.prepare('DELETE FROM tracking_log WHERE created_at < ?').bind(new Date(Date.now() - 30 * 86_400_000).toISOString()).run();
+  // Lead follow-ups are never sent to the owner's own test leads.
   // 2) Projects stuck in one status too long → one admin notification per order per day.
   const stuckBefore = new Date(Date.now() - s.stuck_threshold_days * 86_400_000).toISOString();
   const stuck = (

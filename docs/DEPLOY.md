@@ -58,6 +58,9 @@ Go to **github.com/bayeziddev/shop.sayadbayezid.com → Settings → Secrets and
 | `META_CONVERSATION_API` | already added — the Meta Conversions API token | ✓ |
 | `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWORD` | from SSLCommerz (sandbox first) | to accept bKash, Nagad and card payments |
 | `GEMINI_API_KEY` | Google AI Studio key | for ✨ AI descriptions |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Resend API key, and a sender on a domain you verified in Resend, e.g. `Cwb Agency <alerts@sayadbayezid.com>` | new-lead alert emails + client updates. The addresses that receive lead alerts are set in **Admin → সিস্টেম সেটিংস → নতুন লিডের সাথে সাথে নোটিফিকেশন** (default: info@ and support@sayadbayezid.com). |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | from @BotFather, and your chat id (send the bot a message, then open `https://api.telegram.org/bot<token>/getUpdates`) | optional: every new lead arrives in Telegram within seconds |
+| `LEAD_WEBHOOK_URL` | a Discord/Slack webhook URL, or a Make/Zapier/CallMeBot hook | optional: every new lead is POSTed there (Discord and Slack get their native message format; anything else gets JSON) |
 
 \* If you don't set these two, the first deploy generates them on the Worker once and never changes them. Because Cloudflare secrets can't be read back, set your own **before real client data arrives** so you hold a copy.
 
@@ -120,7 +123,7 @@ If you already use the bare domain for something else, use a subdomain instead: 
 **How it works:**
 - **`https://shop.sayadbayezid.com` (GitHub Pages)** serves the public pages: home, categories, packages and the configurator, checkout, FAQ, policies, quiz, quote and landing pages. They are copied from the Worker after every deploy and **every hour**, so admin edits (prices, offers, banners) appear within the hour. You can also publish at once with **Actions → Publish storefront to GitHub Pages → Run workflow**.
 - **The Cloudflare Worker** stays the backend. Every price, order, lead, chat and tracking call from those pages goes to the Worker's API; the Worker allows `shop.sayadbayezid.com` via CORS.
-- **Pages that stay on the Worker's link:** payment return, the client's order page and project portal, invoices, uploaded images and **`/admin/`**.
+- **Pages that stay on the Worker's link:** payment return, the client's order page and project portal, invoices, uploaded images and the admin panel. **`https://shop.sayadbayezid.com/admin/` forwards to the Worker admin automatically**, and every footer has a “টিম লগইন” link.
 - Prices are always re-checked by the Worker at checkout, so a copy that is up to an hour old can never charge a wrong amount.
 
 ### Steps

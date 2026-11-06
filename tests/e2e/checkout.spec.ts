@@ -8,21 +8,26 @@ import { test, expect } from '@playwright/test';
  */
 test.describe.configure({ mode: 'serial' });
 
+// The lead box has its own tests (showcase.spec.ts); here it must not pop up over the checkout flow.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('sb_leadbox_v1', JSON.stringify({ done: Date.now() })));
+});
+
 test('configure → checkout → pay → requirements', async ({ page, browser }, info) => {
   test.skip(info.project.name === 'mobile', 'full flow runs once; mobile is covered by the layout test');
 
   // 1) Configure
-  await page.goto('/package/fashion-premium');
-  await expect(page.locator('h1')).toContainText('ফ্যাশন প্রিমিয়াম');
+  await page.goto('/package/gadget-market');
+  await expect(page.locator('h1')).toContainText('Gadget Market');
   await page.getByText('এআই চ্যাটবট').click();
   await page.locator('[data-stepper] [data-step="1"]').first().click();
   await page.locator('[data-stepper] [data-step="1"]').first().click();
-  await expect(page.locator('[data-cfg="total"]')).toHaveText('৳৩২,০০০');
+  await expect(page.locator('[data-cfg="total"]')).toHaveText('৳১৭,০০০');
 
   // 2) Checkout — the summary must show the server-verified total, equal to the configurator's.
   await page.locator('[data-order-now]').click();
   await page.waitForURL('**/checkout');
-  await expect(page.locator('[data-summary] .total strong')).toHaveText('৳৩২,০০০');
+  await expect(page.locator('[data-summary] .total strong')).toHaveText('৳১৭,০০০');
   await page.fill('input[name=name]', 'পরীক্ষা ক্লায়েন্ট');
   await page.fill('input[name=phone]', '01711000000');
   await page.fill('input[name=email]', 'e2e@example.com');
@@ -83,9 +88,10 @@ test('chat bubble shows the channel picker first', async ({ page }) => {
 });
 
 test('mobile layout has no horizontal overflow', async ({ page }) => {
-  for (const path of ['/', '/package/fashion-premium', '/checkout']) {
+  for (const path of ['/', '/package/gadget-market', '/checkout']) {
     await page.goto(path);
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    // Compare with the real screen width: a too-wide element makes mobile Chrome zoom out and widen innerWidth too.
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - Math.min(window.innerWidth, screen.width));
     expect(overflow, path).toBeLessThanOrEqual(1);
   }
 });

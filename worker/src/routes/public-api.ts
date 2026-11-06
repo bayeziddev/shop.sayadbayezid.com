@@ -4,10 +4,11 @@ import { fail, ok, readJson } from '../lib/http';
 import { getSettings } from '../lib/settings';
 import { loadPublicPackages, type CategoryRow } from '../lib/catalog';
 import { rateLimit } from '../lib/ratelimit';
-import { clampStr, clientIp, isEmail, normalizeBdPhone, randomToken, toInt, parseJson, nowIso, taka } from '../lib/util';
+import { clampStr, clientIp, isEmail, normalizeBdPhone, randomToken, toInt, parseJson, nowIso, taka, publicOrigin } from '../lib/util';
 import { readAttribution } from '../lib/attribution';
 import { sendMetaEvent } from '../lib/meta-capi';
 import { notifyAdmins } from '../lib/audit';
+import { alertNewLead } from '../lib/notify';
 import { whatsappLink, messengerLink } from '../lib/contact-links';
 import { buildProvider, getAIConfig } from '../lib/ai-providers';
 import { isOfferLive } from '../../../shared/pricing';
@@ -36,41 +37,75 @@ publicApi.get('/api/packages/:slug', async (c) => {
 });
 
 /* ---------------- Leads ---------------- */
+/** Lead box answers we accept (anything else is dropped) and their Bangla labels for the team. */
+const LEADBOX_FIELDS: Record<string, string> = {
+  site_type: 'ওয়েবসাইটের ধরন', category: 'ব্যবসার ধরন', product: 'পণ্য/সেবা', stage: 'ব্যবসার অবস্থা', timeline: 'কবে চালু করতে চান', demo: 'পছন্দের ডেমো',
+};
+const SOURCE_BN = { quote: 'কোটেশন অনুরোধ', chat: 'চ্যাট', quiz: 'কুইজ', landing: 'ল্যান্ডিং পেজ', contact: 'যোগাযোগ ফর্ম', leadbox: 'লিড বক্স' } as const;
+
 publicApi.post('/api/leads', async (c) => {
   const ip = clientIp(c.req.raw);
   await rateLimit(c.env, 'lead', ip, 8, 600);
   const b = await readJson<Record<string, unknown>>(c);
   if (clampStr(b.website, 10)) return ok(c, { eventId: null }); // honeypot
-  const source = (['quote', 'chat', 'quiz', 'landing', 'contact'] as const).find((s) => s === b.source) || 'contact';
+  const source = (['quote', 'chat', 'quiz', 'landing', 'contact', 'leadbox'] as const).find((s) => s === b.source) || 'contact';
   const name = clampStr(b.name, 100);
   const phone = normalizeBdPhone(clampStr(b.phone, 30));
   const email = clampStr(b.email, 200).toLowerCase();
   if (name.length < 2) fail(422, 'আপনার নাম লিখুন', 'name');
-  if (!phone) fail(422, 'সঠিক মোবাইল নম্বর দিন', 'phone');
+  if (!phone) fail(422, source === 'leadbox' ? 'সঠিক হোয়াটসঅ্যাপ নম্বর দিন (০১XXXXXXXXX)' : 'সঠিক মোবাইল নম্বর দিন', 'phone');
   if (email && !isEmail(email)) fail(422, 'ইমেইল ঠিকানাটি সঠিক নয়', 'email');
   if (source === 'quote' && clampStr(b.message, 3000).length < 5) fail(422, 'আপনার চাহিদা সংক্ষেপে লিখুন', 'message');
   const attr = readAttribution(b.attribution, c.req.header('cookie') || '');
   const eventId = `ld_${randomToken(12)}`;
   const s = await getSettings(c.env);
+
+  // Lead box: step answers (whitelisted), and the demo the visitor picked becomes the lead's package.
+  const raw = (b.answers && typeof b.answers === 'object' ? b.answers : {}) as Record<string, unknown>;
+  const answers: Record<string, string> = {};
+  for (const k of Object.keys(LEADBOX_FIELDS)) { const v = clampStr(raw[k], 120); if (v) answers[k] = v; }
+  let packageId = toInt(b.packageId) || null;
+  let demoName = '';
+  if (answers.demo) {
+    const p = await c.env.DB.prepare(`SELECT id, name FROM packages WHERE slug = ? AND status IN ('active','coming_soon')`).bind(answers.demo).first<{ id: number; name: string }>();
+    if (p) { packageId = p.id; demoName = p.name; }
+  }
+  const answerPairs: [string, string][] = Object.entries(answers).map(([k, v]) => [LEADBOX_FIELDS[k], k === 'demo' ? demoName || v : v]);
+  const message = clampStr(b.message, 3000) || answerPairs.map(([k, v]) => `${k}: ${v}`).join('\n');
+  const quiz = Object.keys(answers).length ? answers : b.quiz || null;
+  const pageUrl = clampStr(b.page_url, 1000);
+
   const r = await c.env.DB.prepare(
-    `INSERT INTO leads (source, name, phone, email, business_name, message, package_id, quiz_result, lead_event_id, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, landing_page_id, source_url, next_follow_up_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    `INSERT INTO leads (source, name, phone, email, business_name, message, package_id, quiz_result, lead_event_id, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, landing_page_id, source_url, next_follow_up_at, is_internal)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
   ).bind(
-    source, name, phone, email, clampStr(b.business_name, 150), clampStr(b.message, 3000), toInt(b.packageId) || null,
-    b.quiz ? JSON.stringify(b.quiz).slice(0, 2000) : null, eventId,
-    attr.utm_source, attr.utm_medium, attr.utm_campaign, attr.utm_content, attr.utm_term, attr.fbclid, toInt(b.landing_page_id) || attr.landing_page_id, attr.source_url,
-    new Date(Date.now() + s.lead_followup_hours * 3600_000).toISOString(),
+    source, name, phone, email, clampStr(b.business_name, 150), message, packageId,
+    quiz ? JSON.stringify(quiz).slice(0, 2000) : null, eventId,
+    attr.utm_source, attr.utm_medium, attr.utm_campaign, attr.utm_content, attr.utm_term, attr.fbclid, toInt(b.landing_page_id) || attr.landing_page_id, attr.source_url || pageUrl,
+    new Date(Date.now() + s.lead_followup_hours * 3600_000).toISOString(), attr.internal ? 1 : 0,
   ).first<{ id: number }>();
-  const label = { quote: 'কোটেশন অনুরোধ', chat: 'চ্যাট', quiz: 'কুইজ', landing: 'ল্যান্ডিং পেজ', contact: 'যোগাযোগ ফর্ম' }[source];
-  c.executionCtx.waitUntil(Promise.all([
-    notifyAdmins(c.env, 'new_lead', `নতুন লিড (${label}): ${name}`, `#/leads/${r!.id}`),
+  const leadId = r!.id;
+  const label = SOURCE_BN[source];
+  const adminUrl = `${c.env.SITE_URL.replace(/\/$/, '')}/admin/#/leads/${leadId}`;
+  c.executionCtx.waitUntil(Promise.allSettled([
+    notifyAdmins(c.env, 'new_lead', `নতুন লিড (${label}): ${name}`, `#/leads/${leadId}`),
+    // Instant team alerts (email / Telegram / webhook) so a person can reply within minutes.
+    alertNewLead(c.env, {
+      id: leadId, name, phone, source, sourceLabel: label, answers: answerPairs, message: Object.keys(answers).length ? '' : message,
+      campaign: [attr.utm_source, attr.utm_campaign, attr.utm_content].filter(Boolean).join(' / '), pageUrl: pageUrl || attr.source_url, internal: attr.internal,
+    }, adminUrl),
     sendMetaEvent(c.env, s.meta_pixel_id, {
-      name: 'Lead', eventId, sourceUrl: attr.source_url || c.env.SITE_URL,
+      internal: attr.internal,
+      name: 'Lead', eventId, sourceUrl: pageUrl || attr.source_url || publicOrigin(c.env),
       user: { email, phone, firstName: name, ip, userAgent: c.req.header('user-agent'), fbp: attr.fbp, fbc: attr.fbc, externalId: phone },
-      customData: { lead_source: source, content_ids: b.packageId ? [String(b.packageId)] : [] },
+      customData: { lead_source: source, content_ids: packageId ? [String(packageId)] : [], ...(answers.category ? { content_category: answers.category } : {}), ...(answers.site_type ? { site_type: answers.site_type } : {}) },
     }),
-  ]).catch((e) => console.error(e)));
-  return ok(c, { eventId, leadId: r!.id }, 201);
+  ]).then((rs) => rs.forEach((x) => x.status === 'rejected' && console.error(x.reason))));
+
+  // Hand-off: open WhatsApp with everything the visitor told us, so the conversation starts warm.
+  const waNumber = s.whatsapp_number || (await c.env.DB.prepare('SELECT whatsapp_number FROM chat_settings WHERE id = 1').first<{ whatsapp_number: string }>())?.whatsapp_number || '';
+  const waText = [`আসসালামু আলাইকুম, আমি ${name}।`, ...answerPairs.map(([k, v]) => `${k}: ${v}`), `(রেফারেন্স: লিড #${leadId})`].join('\n');
+  return ok(c, { eventId, leadId, whatsappUrl: whatsappLink(waNumber, waText) || null, bookingUrl: s.booking_url || null }, 201);
 });
 
 /* ---------------- Tracking beacon (PageView / ViewContent mirror) ---------------- */
@@ -79,14 +114,19 @@ publicApi.post('/api/track', async (c) => {
   const b = await readJson<{ event?: string; eventId?: string; url?: string; customData?: Record<string, unknown>; fbp?: string; fbc?: string }>(c);
   // Only browsing events can be mirrored this way. Lead / InitiateCheckout / Purchase are fired by the server
   // itself at the moment they are confirmed, so they can never be triggered from the browser.
-  if (b.event !== 'PageView' && b.event !== 'ViewContent') fail(422, 'অননুমোদিত ইভেন্ট');
+  // LeadBoxStep is a custom (non-conversion) signal: which lead-box question was answered, for audiences.
+  if (b.event !== 'PageView' && b.event !== 'ViewContent' && b.event !== 'LeadBoxStep') fail(422, 'অননুমোদিত ইভেন্ট');
   const eventId = clampStr(b.eventId, 64);
   if (!/^[\w-]{8,64}$/.test(eventId)) fail(422, 'ইভেন্ট আইডি সঠিক নয়');
   const url = clampStr(b.url, 1000);
-  if (!url.startsWith(c.env.SITE_URL)) return ok(c, { sent: false });
+  // Only page views of this site (the Worker itself or the public storefront, e.g. GitHub Pages) are mirrored.
+  const own = [c.env.SITE_URL, publicOrigin(c.env)].map((o) => o.replace(/\/$/, ''));
+  if (!own.some((o) => url === o || url.startsWith(o + '/') || url.startsWith(o + '?'))) return ok(c, { sent: false });
   const s = await getSettings(c.env);
   const cd = (b.customData && typeof b.customData === 'object' ? b.customData : {}) as Record<string, unknown>;
-  const custom = b.event === 'ViewContent' ? { content_ids: Array.isArray(cd.content_ids) ? cd.content_ids.slice(0, 5).map(String) : [], content_type: 'product', value: toInt(cd.value), currency: 'BDT' } : {};
+  const custom = b.event === 'ViewContent'
+    ? { content_ids: Array.isArray(cd.content_ids) ? cd.content_ids.slice(0, 5).map(String) : [], content_type: 'product', value: toInt(cd.value), currency: 'BDT' }
+    : b.event === 'LeadBoxStep' ? { step: clampStr(cd.step, 30), answer: clampStr(cd.answer, 80) } : {};
   c.executionCtx.waitUntil(sendMetaEvent(c.env, s.meta_pixel_id, {
     name: b.event, eventId, sourceUrl: url,
     user: { ip: clientIp(c.req.raw), userAgent: c.req.header('user-agent'), fbp: clampStr(b.fbp, 200), fbc: clampStr(b.fbc, 600) },

@@ -30,6 +30,16 @@ export function rewriteHtml(html, workerUrl) {
   return html.replace(/(["'(])\/media\//g, `$1${base}/media/`);
 }
 
+/**
+ * The admin panel runs on the Worker (it needs the API, cookies and uploads). On the GitHub Pages domain
+ * /admin/ is a tiny page that forwards there, so shop.example.com/admin keeps working as an address.
+ */
+export function adminRedirectHtml(workerUrl) {
+  const target = `${workerUrl.replace(/\/$/, '')}/admin/`;
+  const t = target.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  return `<!doctype html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex, nofollow"><title>অ্যাডমিন প্যানেল</title><meta http-equiv="refresh" content="0; url=${t}"><link rel="canonical" href="${t}"><script>location.replace(${JSON.stringify(target)} + location.hash);</script><style>body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#0b0a1f;color:#f6f5ff}a{color:#a78bfa}</style></head><body><p>অ্যাডমিন প্যানেলে নিয়ে যাওয়া হচ্ছে… <a href="${t}">এখানে চাপুন</a></p></body></html>\n`;
+}
+
 /** "/" → index.html, "/package/x" → package/x.html (GitHub Pages serves it at /package/x). */
 export function fileFor(path) {
   const clean = path.split('?')[0].replace(/\/+$/, '');
@@ -87,6 +97,8 @@ export async function exportSite({ workerUrl, pagesDomain, outDir = 'site', fetc
   if (sitemap.status === 200) await writeFile(join(outDir, 'sitemap.xml'), sitemap.text);
   const robots = await get('/robots.txt');
   if (robots.status === 200) await writeFile(join(outDir, 'robots.txt'), robots.text);
+  await mkdir(join(outDir, 'admin'), { recursive: true });
+  await writeFile(join(outDir, 'admin', 'index.html'), adminRedirectHtml(base));
   await writeFile(join(outDir, 'CNAME'), `${pagesDomain}\n`);
   await writeFile(join(outDir, '.nojekyll'), '');
 

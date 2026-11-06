@@ -1,30 +1,55 @@
 import { html, raw, safeUrl, type Raw } from '../lib/html';
 import { isOfferLive, priceLine } from '../../../shared/pricing';
+import { mediaSrc, type VideoSource } from '../../../shared/media';
 import type { PublicPackage, CouponRow } from '../lib/catalog';
 import { taka, bnDigits } from '../lib/util';
 
 const GRADIENTS = ['#3b82f6,#8b5cf6', '#6366f1,#ec4899', '#06b6d4,#6366f1', '#8b5cf6,#d946ef', '#0ea5e9,#22d3ee', '#7c3aed,#2563eb'];
 
-/** Browser-frame mockup. Uses the real screenshot/video if present, otherwise a branded placeholder (never a fake screenshot). */
-export function browserFrame(p: Pick<PublicPackage, 'name' | 'images' | 'demoVideo' | 'demoUrl' | 'id'>, opts: { eager?: boolean; video?: boolean } = {}): Raw {
-  const host = (() => {
-    try { return p.demoUrl ? new URL(p.demoUrl).host : ''; } catch { return ''; }
-  })();
+export const TIER_BN: Record<string, string> = { basic: 'বেসিক', standard: 'রেডি সাইট', premium: 'প্রিমিয়াম', custom: 'কাস্টম' };
+export const tierLabel = (t: string) => TIER_BN[t] || t;
+
+/** Screenshot captions from the file name (cover.webp → হোমপেজ …). Uploaded images get a numbered caption. */
+const SHOT_BN: Record<string, string> = {
+  cover: 'হোমপেজ', section: 'হোমপেজের আরও অংশ', product: 'পণ্যের পেজ', checkout: 'চেকআউট', admin: 'অ্যাডমিন ড্যাশবোর্ড',
+  sidebar: 'অ্যাডমিন সাইডবার', header: 'হেডার ও মেনু', footer: 'ফুটার', mobile: 'মোবাইল ভিউ',
+};
+export function shotCaption(src: string, i: number): string {
+  const name = (src.split('/').pop() || '').replace(/\.\w+$/, '');
+  return SHOT_BN[name] || `স্ক্রিনশট ${bnDigits(i + 1)}`;
+}
+/** Portrait shots (phone screen, sidebar) are shown whole instead of cropped. */
+export const isTallShot = (src: string) => /\/(mobile|sidebar)\.\w+$/.test(src) || /[-_](mobile|phone)\b/i.test(src);
+
+function hostOf(u: string): string {
+  try { return u ? new URL(u).host : ''; } catch { return ''; }
+}
+
+/** Browser-frame mockup around a real screenshot/video. Without one: a branded placeholder (never a fake screenshot). */
+export function browserFrame(
+  p: { id: number; name: string; cover?: string; demoUrl?: string; demoVideo?: string },
+  opts: { eager?: boolean; video?: boolean; src?: string; alt?: string } = {},
+): Raw {
+  const src = opts.src ?? p.cover ?? '';
   const g = GRADIENTS[p.id % GRADIENTS.length];
   const media = opts.video && p.demoVideo
-    ? html`<video src="${p.demoVideo}" ${p.images[0] ? html`poster="${p.images[0]}"` : ''} muted loop playsinline autoplay preload="none" aria-label="${p.name} ডেমো ভিডিও"></video>`
-    : p.images[0]
-      ? html`<img src="${p.images[0]}" alt="${p.name} এর স্ক্রিনশট" loading="${opts.eager ? 'eager' : 'lazy'}" decoding="async" width="1200" height="750">`
+    ? html`<video src="${p.demoVideo}" ${src ? html`poster="${src}"` : ''} muted loop playsinline autoplay preload="none" aria-label="${p.name} ডেমো ভিডিও"></video>`
+    : src
+      ? html`<img src="${src}" alt="${opts.alt || `${p.name} — স্ক্রিনশট`}" loading="${opts.eager ? 'eager' : 'lazy'}" decoding="async" width="1440" height="900" class="${isTallShot(src) ? 'is-tall' : ''}">`
       : html`<div class="frame-placeholder" style="--g:${g}"><span>${p.name}</span><small>স্ক্রিনশট শীঘ্রই যোগ হবে</small></div>`;
-  return html`<div class="browser-frame"><div class="bf-bar"><i></i><i></i><i></i><span class="bf-url">${host || 'ডেমো'}</span></div><div class="bf-body">${media}</div></div>`;
+  return html`<div class="browser-frame"><div class="bf-bar"><i></i><i></i><i></i><span class="bf-url">${hostOf(p.demoUrl || '') || 'লাইভ ডেমো'}</span></div><div class="bf-body">${media}</div></div>`;
+}
+
+export function phoneFrame(src: string, alt: string): Raw {
+  return html`<div class="phone-frame"><span class="pf-notch" aria-hidden="true"></span><img src="${src}" alt="${alt}" loading="lazy" decoding="async" width="390" height="844"></div>`;
 }
 
 export function priceBlock(p: PublicPackage, now: number): Raw {
   const line = priceLine({ id: p.id, categoryId: p.categoryId, basePrice: p.basePrice, addons: [], offers: p.offers }, { packageId: p.id, addons: [] }, now);
   if (line.offerDiscount > 0) {
-    return html`<div class="price"><span class="price-from">শুরু</span> <strong>${taka(line.total)}</strong> <s>${taka(line.subtotal)}</s></div>`;
+    return html`<div class="price"><strong>${taka(line.total)}</strong> <s>${taka(line.subtotal)}</s></div>`;
   }
-  return html`<div class="price"><span class="price-from">শুরু</span> <strong>${taka(p.basePrice)}</strong></div>`;
+  return html`<div class="price"><strong>${taka(p.basePrice)}</strong> <span class="price-from">এককালীন</span></div>`;
 }
 
 export function liveOffer(p: PublicPackage, now: number) {
@@ -42,32 +67,54 @@ export function offerBadge(o: { discountType: 'percent' | 'flat'; discountValue:
 }
 
 export function couponChip(c: CouponRow): Raw {
-  return html`<button type="button" class="coupon-chip" data-copy="${c.code}" title="কোড কপি করুন">কুপন: <strong>${c.code}</strong> · ${c.discount_type === 'percent' ? `${bnDigits(c.discount_value)}%` : taka(c.discount_value)} ছাড়</button>`;
+  return html`<button type="button" class="coupon-chip" data-copy="${c.code}" title="কোড কপি করুন">কুপন: <strong>${c.code}</strong> · ${c.discount_type === 'percent' ? `${bnDigits(c.discount_value)}%` : taka(c.discount_value)} ছাড় — কপি করুন</button>`;
 }
 
 export function couponsFor(p: PublicPackage, coupons: CouponRow[]): CouponRow[] {
   return coupons.filter((c) => c.scope === 'sitewide' || (c.scope === 'category' && c.scope_id === p.categoryId) || (c.scope === 'package' && c.scope_id === p.id));
 }
 
+/** "লাইভ ডেমো দেখুন" link with the data the tracker needs for the DemoClick event. */
+export function demoLink(p: { id: number; name: string }, url: string, label: string, cls = 'btn btn-ghost'): Raw {
+  const u = safeUrl(url);
+  if (!u) return raw('');
+  return html`<a class="${cls}" href="${u}" target="_blank" rel="noopener" data-demo-click data-package-id="${p.id}" data-package-name="${p.name}" data-demo-label="${label}">${label} <span aria-hidden="true">↗</span></a>`;
+}
+
 export function packageCard(p: PublicPackage, coupons: CouponRow[], now: number): Raw {
   const offer = liveOffer(p, now);
   const cs = couponsFor(p, coupons).slice(0, 1);
   const soon = p.status === 'coming_soon';
-  return html`<article class="card pkg-card ${soon ? 'is-soon' : ''}">
-  <a href="/package/${p.slug}" class="pkg-media" aria-label="${p.name}">${browserFrame(p)}</a>
+  return html`<article class="card pkg-card ${soon ? 'is-soon' : ''}" data-cat="${p.categorySlug || ''}">
+  <a href="/package/${p.slug}" class="pkg-media" aria-label="${p.name} — বিস্তারিত দেখুন">${browserFrame(p)}${p.video ? html`<span class="pkg-video-badge">▶ ভিডিও</span>` : ''}</a>
   <div class="pkg-body">
-    <div class="pkg-tags"><span class="badge">${p.tier === 'premium' ? 'প্রিমিয়াম' : p.tier === 'basic' ? 'বেসিক' : p.tier}</span>${offer ? offerBadge(offer) : ''}${soon ? html`<span class="badge badge-soon">শীঘ্রই আসছে</span>` : ''}</div>
+    <div class="pkg-tags"><span class="badge">${p.categoryName || tierLabel(p.tier)}</span>${offer ? offerBadge(offer) : ''}${soon ? html`<span class="badge badge-soon">শীঘ্রই আসছে</span>` : ''}</div>
     <h3><a href="/package/${p.slug}">${p.name}</a></h3>
     <p class="muted">${p.shortDescription}</p>
-    ${priceBlock(p, now)}
+    ${p.features.length ? html`<ul class="mini-features">${p.features.slice(0, 3).map((f) => html`<li>${f}</li>`)}</ul>` : ''}
+    <div class="pkg-price-row">${priceBlock(p, now)}<span class="muted small">${bnDigits(p.deliveryDays)} কর্মদিবসে ডেলিভারি</span></div>
     ${offer?.endsAt ? countdown(offer.endsAt) : ''}
     ${cs.map(couponChip)}
     <div class="pkg-actions">
-      <a class="btn btn-primary" href="/package/${p.slug}">${soon ? 'বিস্তারিত দেখুন' : 'কাস্টমাইজ ও অর্ডার'}</a>
-      ${safeUrl(p.demoUrl) ? html`<a class="btn btn-ghost" href="${safeUrl(p.demoUrl)}" target="_blank" rel="noopener">লাইভ ডেমো ↗</a>` : ''}
+      <a class="btn btn-primary" href="/package/${p.slug}">${soon ? 'বিস্তারিত দেখুন' : 'বিস্তারিত ও অর্ডার'} <span aria-hidden="true">→</span></a>
+      ${demoLink(p, p.demoUrl, 'লাইভ ডেমো')}
     </div>
   </div>
 </article>`;
+}
+
+/** Click-to-play video: only a thumbnail loads until the visitor presses play (fast pages, no third-party cookies before intent). */
+export function videoPlayer(v: VideoSource | null, title: string, poster: string, p?: { id: number; name: string }): Raw {
+  if (!v) return raw('');
+  const track = p ? html` data-video-play data-package-id="${p.id}" data-package-name="${p.name}"` : '';
+  if (v.kind === 'file') {
+    return html`<div class="video-box"><video src="${v.src}" ${poster ? html`poster="${poster}"` : ''} controls playsinline preload="none" aria-label="${title}"${track}></video></div>`;
+  }
+  if (v.kind === 'link') {
+    return html`<div class="video-box video-link"><a class="btn btn-primary btn-lg" href="${v.href}" target="_blank" rel="noopener"${track}>▶ ভিডিওটি দেখুন ↗</a></div>`;
+  }
+  const thumb = v.kind === 'youtube' ? v.thumb : poster;
+  return html`<div class="video-box"><button type="button" class="lite-video" data-embed="${v.embed}" aria-label="${title} — ভিডিও চালান"${track} ${thumb ? html`style="background-image:url('${thumb}')"` : ''}><span class="lv-play" aria-hidden="true">▶</span><span class="lv-title">${title}</span></button></div>`;
 }
 
 export function stars(n: number): Raw {
@@ -86,6 +133,57 @@ export function faqList(items: { question: string; answer: string }[]): Raw {
   return html`<div class="faq">${items.map((f) => html`<details><summary>${f.question}</summary><div>${f.answer}</div></details>`)}</div>`;
 }
 
+/** "শিরোনাম | বিবরণ" cards (benefits, why us). */
+export function pointCards(items: { title: string; text: string }[], icon = '✓'): Raw {
+  return html`<div class="point-grid">${items.map((it, i) => html`<div class="card point"><span class="point-ico" aria-hidden="true">${icon === '#' ? bnDigits(i + 1) : icon}</span><div><h3>${it.title}</h3>${it.text ? html`<p class="muted">${it.text}</p>` : ''}</div></div>`)}</div>`;
+}
+
+export interface DesignView { id: number; kind: string; title: string; image: string; demo_url: string; note: string; package_slug: string | null; package_name: string | null; package_id: number | null }
+export const DESIGN_KINDS: [string, string][] = [
+  ['hero', 'হোমপেজ / হিরো'], ['header', 'হেডার ও মেনু'], ['product', 'পণ্যের পেজ'], ['checkout', 'চেকআউট'], ['footer', 'ফুটার'],
+  ['dashboard', 'অ্যাডমিন ড্যাশবোর্ড'], ['sidebar', 'সাইডবার'], ['mobile', 'মোবাইল ভিউ'], ['section', 'পেজ সেকশন'], ['other', 'অন্যান্য'],
+];
+export const designKindLabel = (k: string) => DESIGN_KINDS.find(([x]) => x === k)?.[1] || k;
+
+export function designCard(d: DesignView): Raw {
+  const src = mediaSrc(d.image);
+  const tall = d.kind === 'mobile' || d.kind === 'sidebar';
+  return html`<figure class="card design-card ${tall ? 'is-tall' : ''} kind-${d.kind}" data-kind="${d.kind}">
+  <button type="button" class="design-shot" data-lightbox="${src}" data-caption="${d.title}" aria-label="${d.title} — বড় করে দেখুন"><img src="${src}" alt="${d.title}" loading="lazy" decoding="async"></button>
+  <figcaption>
+    <span class="badge">${designKindLabel(d.kind)}</span>
+    <strong>${d.title}</strong>
+    ${d.note ? html`<span class="muted small">${d.note}</span>` : ''}
+    <span class="design-actions">
+      ${d.package_slug ? html`<a class="btn btn-primary btn-sm" href="/package/${d.package_slug}">এই ডিজাইনে অর্ডার করুন →</a>` : html`<a class="btn btn-primary btn-sm" href="/quote">এমন ডিজাইন চাই →</a>`}
+      ${d.demo_url && d.package_id ? demoLink({ id: d.package_id, name: d.package_name || d.title }, d.demo_url, 'লাইভ দেখুন', 'btn btn-ghost btn-sm') : d.demo_url ? html`<a class="btn btn-ghost btn-sm" href="${safeUrl(d.demo_url)}" target="_blank" rel="noopener">লাইভ দেখুন ↗</a>` : ''}
+    </span>
+  </figcaption>
+</figure>`;
+}
+
+export interface PortfolioView { id: number; title: string; client_name: string; live_url: string; cover_image: string; images: string; video_url: string; summary: string; result: string; testimonial: string; delivered_at: string | null; category_name: string | null; category_slug: string | null; package_slug: string | null }
+
+export function portfolioCard(w: PortfolioView): Raw {
+  const cover = mediaSrc(w.cover_image);
+  const live = safeUrl(w.live_url);
+  return html`<article class="card work-card" data-cat="${w.category_slug || ''}">
+  <div class="work-media">${browserFrame({ id: w.id, name: w.title, cover, demoUrl: live })}</div>
+  <div class="work-body">
+    <div class="pkg-tags">${w.category_name ? html`<span class="badge">${w.category_name}</span>` : ''}<span class="badge badge-verified">✓ ডেলিভারি সম্পন্ন</span></div>
+    <h3>${w.title}</h3>
+    ${w.client_name ? html`<p class="small muted">ক্লায়েন্ট: ${w.client_name}</p>` : ''}
+    ${w.summary ? html`<p>${w.summary}</p>` : ''}
+    ${w.result ? html`<p class="work-result"><strong>ফলাফল:</strong> ${w.result}</p>` : ''}
+    ${w.testimonial ? html`<blockquote class="work-quote">“${w.testimonial}”</blockquote>` : ''}
+    <div class="pkg-actions">
+      ${live ? html`<a class="btn btn-primary" href="${live}" target="_blank" rel="noopener" data-portfolio-click data-work="${w.title}">সাইটটি ভিজিট করুন ↗</a>` : ''}
+      <a class="btn btn-ghost" href="${w.package_slug ? `/package/${w.package_slug}` : '/quote'}">${w.package_slug ? 'এমন সাইট চাই →' : 'আমারও এমন সাইট চাই →'}</a>
+    </div>
+  </div>
+</article>`;
+}
+
 export function leadForm(opts: { source: 'quote' | 'contact' | 'landing'; packageId?: number; title?: string; landingPageId?: number; compact?: boolean }): Raw {
   return html`<form class="card form lead-form" data-lead-form data-source="${opts.source}" ${opts.packageId ? html`data-package-id="${opts.packageId}"` : ''} ${opts.landingPageId ? html`data-landing-id="${opts.landingPageId}"` : ''}>
   ${opts.title ? html`<h3>${opts.title}</h3>` : ''}
@@ -95,7 +193,8 @@ export function leadForm(opts: { source: 'quote' | 'contact' | 'landing'; packag
   </div>
   ${opts.compact ? '' : html`<div class="grid-2"><label>ইমেইল (ঐচ্ছিক)<input name="email" type="email" maxlength="200" autocomplete="email"></label><label>ব্যবসার নাম (ঐচ্ছিক)<input name="business_name" maxlength="150"></label></div>`}
   <label>${opts.source === 'quote' ? 'আপনার চাহিদা লিখুন' : 'বার্তা'}<textarea name="message" rows="${opts.compact ? 2 : 4}" maxlength="3000" ${opts.source === 'quote' ? raw('required') : ''} placeholder="${opts.source === 'quote' ? 'কী ধরনের সাইট, কয়টি পেজ, কোনো রেফারেন্স সাইট…' : ''}"></textarea></label>
-  <button class="btn btn-primary btn-block">${opts.source === 'quote' ? 'কোটেশন চাই' : 'পাঠান'}</button>
+  <input name="website" tabindex="-1" autocomplete="off" class="hp" aria-hidden="true">
+  <button class="btn btn-primary btn-block">${opts.source === 'quote' ? 'কোটেশন চাই — ফ্রি' : opts.source === 'landing' ? 'আমার সাথে যোগাযোগ করুন' : 'বার্তা পাঠান'}</button>
   <p class="form-msg" data-form-msg role="status"></p>
 </form>`;
 }

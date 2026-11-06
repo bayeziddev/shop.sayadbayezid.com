@@ -1,9 +1,11 @@
-import { $, $$, api, bn, taka, esc, fmtDate, toast, listView, statusPill, yesNo, can, state, openForm } from './core.js';
+import { $, $$, api, bn, taka, esc, fmtDate, toast, listView, statusPill, yesNo, can, state, openForm, mediaSrc } from './core.js';
+
+const DESIGN_KINDS = [['hero', 'হোমপেজ / হিরো'], ['header', 'হেডার ও মেনু'], ['product', 'পণ্যের পেজ'], ['checkout', 'চেকআউট'], ['footer', 'ফুটার'], ['dashboard', 'অ্যাডমিন ড্যাশবোর্ড'], ['sidebar', 'সাইডবার'], ['mobile', 'মোবাইল ভিউ'], ['section', 'পেজ সেকশন'], ['other', 'অন্যান্য']];
 import * as V from './views.js';
 
 const app = $('#app');
 const NAV = [
-  ['dashboard', 'ড্যাশবোর্ড', '◧'], ['categories', 'ক্যাটাগরি', '▦'], ['packages', 'প্যাকেজ', '◫'], ['landing-pages', 'ল্যান্ডিং পেজ', '⬚'],
+  ['dashboard', 'ড্যাশবোর্ড', '◧'], ['categories', 'ক্যাটাগরি', '▦'], ['packages', 'প্যাকেজ', '◫'], ['designs', 'ডিজাইন গ্যালারি', '▤'], ['portfolio', 'সফল ডেলিভারি', '✓'], ['landing-pages', 'ল্যান্ডিং পেজ', '⬚'], ['tracking', 'ট্র্যাকিং ও বিজ্ঞাপন', '◎'],
   ['orders', 'অর্ডার / প্রজেক্ট', '🧾'], ['leads', 'লিড', '☏'], ['coupons', 'কুপন', '%'], ['offers', 'ক্যাটাগরি অফার', '⏱'], ['banners', 'ব্যানার / পপআপ', '▭'],
   ['faqs', 'প্রশ্নোত্তর', '?'], ['reviews', 'রিভিউ', '★'], ['chats', 'চ্যাট', '💬'], ['chat-settings', 'চ্যাট সেটিংস', '⚙'], ['ai-settings', 'এআই সেটিংস', '✨'],
   ['reports', 'রিপোর্ট', '📈'], ['staff', 'স্টাফ ও ভূমিকা', '👥'], ['activity', 'অ্যাক্টিভিটি লগ', '≡'], ['settings', 'সিস্টেম সেটিংস', '⚒'], ['help', 'সহায়তা কেন্দ্র', 'ⓘ'],
@@ -104,6 +106,46 @@ const R = {
     ],
     onCreate: () => { location.hash = '#/packages/new'; },
     onOpen: (p) => { location.hash = `#/packages/${p.id}`; },
+  },
+  designs: {
+    title: 'ডিজাইন গ্যালারি', singular: 'ডিজাইন', endpoint: '/designs', writePerm: 'catalog.write', titleKey: 'title',
+    intro: 'সাইটের “ডিজাইন গ্যালারি” পেজে যা দেখায় — চেকআউট, সাইডবার, ফুটার, হেডার, পণ্যের পেজ, মোবাইল ভিউ। ভিজিটর ধরন অনুযায়ী ফিল্টার করে তুলনা করতে পারেন।',
+    filters: [{ name: 'kind', label: 'ধরন', options: () => DESIGN_KINDS }, { name: 'package_id', label: 'প্যাকেজ', options: pkgOpts }],
+    columns: [
+      { label: 'ছবি', render: (d) => `<img class="thumb-sm" src="${esc(mediaSrc(d.image))}" alt="" loading="lazy">` },
+      { label: 'শিরোনাম', render: (d) => `<b>${esc(d.title)}</b><br><span class="small muted">${esc(pkgName(d.package_id))}</span>` },
+      { label: 'ধরন', render: (d) => esc(DESIGN_KINDS.find(([k]) => k === d.kind)?.[1] || d.kind) },
+      { label: 'ক্রম', render: (d) => bn(d.sort_order) }, { label: '', render: (d) => yesNo(d.is_active) },
+    ],
+    fields: [
+      { name: 'kind', label: 'ধরন', type: 'select', options: DESIGN_KINDS, required: true }, { name: 'title', label: 'শিরোনাম', required: true },
+      { name: 'image', label: 'ছবি / স্ক্রিনশট', type: 'image' }, { name: 'package_id', label: 'কোন প্যাকেজের (অর্ডার বোতাম এখানে যাবে)', type: 'select', options: pkgOpts, numeric: true },
+      { name: 'demo_url', label: 'লাইভ ডেমো লিংক', inputType: 'url', placeholder: 'https://' }, { name: 'note', label: 'ছোট নোট' },
+      { name: 'sort_order', label: 'ক্রম', type: 'number', default: 0 }, { name: 'is_active', label: 'সক্রিয়', type: 'bool', default: 1 },
+    ],
+    newValues: { kind: 'checkout', is_active: 1, sort_order: 0 },
+  },
+  portfolio: {
+    title: 'সফল ডেলিভারি', singular: 'ডেলিভারি', endpoint: '/portfolio', writePerm: 'catalog.write', titleKey: 'title',
+    intro: 'ক্লায়েন্টদের জন্য তৈরি ও ডেলিভারি করা আসল সাইট — সাইটের “সফল ডেলিভারি” পেজে লিংকসহ দেখায়। শুধু আসল, ক্লায়েন্টের অনুমতি নেওয়া কাজ যোগ করুন।',
+    filters: [{ name: 'category_id', label: 'ক্যাটাগরি', options: catOpts }, { name: 'is_active', label: 'অবস্থা', options: [['1', 'সক্রিয়'], ['0', 'নিষ্ক্রিয়']] }],
+    columns: [
+      { label: 'ছবি', render: (w) => (w.cover_image ? `<img class="thumb-sm" src="${esc(mediaSrc(w.cover_image))}" alt="" loading="lazy">` : statusPill('ছবি নেই', 'warn')) },
+      { label: 'সাইট', render: (w) => `<b>${esc(w.title)}</b><br><span class="small muted">${esc(w.client_name || '')}</span>` },
+      { label: 'লিংক', render: (w) => (w.live_url ? `<a href="${esc(w.live_url)}" target="_blank" rel="noopener">ভিজিট ↗</a>` : '—') },
+      { label: 'ক্যাটাগরি', render: (w) => esc(w.category_id ? catName(w.category_id) : '—') },
+      { label: '', render: (w) => yesNo(w.is_active) + (w.is_featured ? ' ' + statusPill('হোমপেজে') : '') },
+    ],
+    fields: [
+      { name: 'title', label: 'সাইটের নাম', required: true }, { name: 'client_name', label: 'ক্লায়েন্ট / ব্যবসার নাম' },
+      { name: 'live_url', label: 'লাইভ সাইটের লিংক', inputType: 'url', placeholder: 'https://' },
+      { name: 'category_id', label: 'ক্যাটাগরি', type: 'select', options: catOpts, numeric: true }, { name: 'package_id', label: 'কোন প্যাকেজ থেকে', type: 'select', options: pkgOpts, numeric: true },
+      { name: 'cover_image', label: 'কভার ছবি', type: 'image' }, { name: 'images', label: 'আরও ছবি', type: 'images' }, { name: 'video_url', label: 'ভিডিও (ইউটিউব/ফেসবুক/ভিমিও/ড্রাইভ লিংক বা আপলোড)', type: 'video' },
+      { name: 'summary', label: 'কী বানিয়েছি', type: 'textarea', rows: 3 }, { name: 'result', label: 'ফলাফল (যেমন: প্রথম মাসে ১২০টি অর্ডার) — শুধু সত্যি সংখ্যা', type: 'textarea', rows: 2 },
+      { name: 'testimonial', label: 'ক্লায়েন্টের মন্তব্য (অনুমতি নিয়ে)', type: 'textarea', rows: 3 }, { name: 'delivered_at', label: 'ডেলিভারির তারিখ', type: 'datetime' },
+      { name: 'is_featured', label: 'হোমপেজে দেখান', type: 'bool' }, { name: 'sort_order', label: 'ক্রম', type: 'number', default: 0 }, { name: 'is_active', label: 'সক্রিয়', type: 'bool', default: 1 },
+    ],
+    newValues: { is_active: 1, sort_order: 0 },
   },
   'landing-pages': {
     title: 'ল্যান্ডিং পেজ', endpoint: '/landing-pages', writePerm: 'marketing.write', titleKey: 'title', intro: 'প্রতিটি বিজ্ঞাপন ক্যাম্পেইনের জন্য আলাদা পেজ — নিজস্ব হিরো, অফার ও ট্র্যাকিংসহ। মেনুতে দেখা যায় না।',
@@ -207,6 +249,7 @@ async function route() {
     else if (name === 'chat-settings') await V.chatSettingsView(fresh);
     else if (name === 'ai-settings') await V.aiSettingsView(fresh);
     else if (name === 'reports') await V.reportsView(fresh);
+    else if (name === 'tracking') await V.trackingView(fresh);
     else if (name === 'settings') await V.settingsView(fresh);
     else if (name === 'help') V.helpView(fresh);
     else if (R[name]) {
