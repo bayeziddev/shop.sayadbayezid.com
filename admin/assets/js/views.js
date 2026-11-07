@@ -79,13 +79,14 @@ export function ordersView(root) {
     filters: [
       { name: 'project_status', label: 'প্রজেক্ট', options: () => PS().map((s) => [s.key, s.label]) },
       { name: 'payment_status', label: 'পেমেন্ট', options: Object.entries(PAY).map(([k, v]) => [k, v[0]]) },
+      { name: 'kind', label: 'ধরন', options: [['website', 'ওয়েবসাইট'], ['course', 'কোর্স']] },
     ],
     columns: [
-      { label: 'অর্ডার', render: (o) => `<a href="#/orders/${o.id}">${esc(o.order_number)}</a>${o.invoice_number ? `<br><span class="muted small">${esc(o.invoice_number)}</span>` : ''}` },
+      { label: 'অর্ডার', render: (o) => `<a href="#/orders/${o.id}">${esc(o.order_number)}</a>${o.kind === 'course' ? ' ' + statusPill('🎓 কোর্স', 'info') : ''}${o.invoice_number ? `<br><span class="muted small">${esc(o.invoice_number)}</span>` : ''}` },
       { label: 'ক্লায়েন্ট', render: (o) => `${esc(o.customer_name)}<br><span class="muted small">${esc(o.customer_phone)}</span>` },
       { label: 'মোট', render: (o) => taka(o.total) },
       { label: 'পেমেন্ট', render: (o) => `${payPill(o.payment_status)}<br><span class="muted small">${METHOD[o.payment_method] || esc(o.payment_method)}</span>` },
-      { label: 'প্রজেক্ট', render: (o) => projPill(o.project_status) },
+      { label: 'প্রজেক্ট', render: (o) => (o.kind === 'course' ? (o.payment_status === 'paid' && o.project_status !== 'cancelled' ? statusPill('কোর্স চালু', 'ok') : o.project_status === 'cancelled' ? projPill('cancelled') : statusPill('পেমেন্টের অপেক্ষায়', 'warn')) : projPill(o.project_status)) },
       { label: 'উৎস', render: (o) => `<span class="small">${esc(o.utm_source || 'সরাসরি')}${o.utm_campaign ? ' / ' + esc(o.utm_campaign) : ''}</span>` },
       { label: 'তারিখ', render: (o) => `<span class="small">${fmtDate(o.created_at)}</span>` },
     ],
@@ -100,13 +101,20 @@ export async function openOrder(id, reload) {
     const o = d.order;
     const pipeline = PS().filter((s) => s.key !== 'cancelled');
     const curIdx = pipeline.findIndex((s) => s.key === o.project_status);
+    const isCourse = o.kind === 'course';
+    const cs = d.course;
+    const courseCard = isCourse ? `<div class="card"><h3>🎓 কোর্স অর্ডার</h3>
+      ${cs?.student ? `<dl class="kv"><dt>শিক্ষার্থী</dt><dd><a href="#/students">${esc(cs.student.name)}</a> · ${esc(cs.student.phone)}${cs.student.is_blocked ? ' ' + statusPill('ব্লক', 'bad') : ''}</dd><dt>শেষ লগইন</dt><dd>${fmtDate(cs.student.last_login_at)}</dd>
+        <dt>কোর্স এক্সেস</dt><dd>${cs.enrollments.length ? cs.enrollments.map((e) => `${esc(e.title)} — ${e.status === 'active' ? statusPill('প্রোফাইলে চালু', 'ok') : statusPill('বন্ধ', 'bad')}`).join('<br>') : statusPill(o.payment_status === 'paid' ? 'চালু হয়নি' : 'পেমেন্ট নিশ্চিত হলেই চালু হবে', 'warn')}</dd></dl>
+        <p class="small muted">পেমেন্ট নিশ্চিত হলেই (গেটওয়ে অথবা নিচে আপনার যাচাই) কোর্সটি শিক্ষার্থীর প্রোফাইলে খুলে যায় ও তাকে জানানো হয়। অর্ডার বাতিল করলে এক্সেস বন্ধ হয়।</p>
+        <div style="display:flex;gap:.4rem;flex-wrap:wrap"><a class="btn sm" href="#/enrollments?student_id=${cs.student.id}">এই শিক্ষার্থীর সব কোর্স</a></div>` : '<p class="muted">শিক্ষার্থীর তথ্য নেই</p>'}</div>` : '';
     so.body.innerHTML = `
       <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap">
         <div><h2 style="margin:0">${esc(o.order_number)} ${o.invoice_number ? `<span class="muted small">· ${esc(o.invoice_number)}</span>` : ''}</h2><div>${payPill(o.payment_status)} ${projPill(o.project_status)}</div></div>
         <div style="display:flex;gap:.4rem;flex-wrap:wrap"><a class="btn sm" href="${d.invoiceUrl}" target="_blank" rel="noopener">ইনভয়েস</a><a class="btn sm" href="${d.portalUrl}" target="_blank" rel="noopener">ক্লায়েন্ট পোর্টাল</a><a class="btn sm" href="${waLink(o.customer_phone)}" target="_blank" rel="noopener">হোয়াটসঅ্যাপ</a></div>
       </div>
-      <div class="pipeline">${pipeline.map((s, i) => `<span class="${i < curIdx ? 'done' : i === curIdx ? 'cur' : ''}">${esc(s.label)}</span>`).join('')}</div>
-      ${can('orders.write') && d.nextStatuses.length ? `<div class="card"><h3>পরের ধাপে নিন</h3><div style="display:flex;gap:.4rem;flex-wrap:wrap">${d.nextStatuses.map((s) => `<button class="btn ${s === 'cancelled' ? 'danger' : 'primary'} sm" data-status="${s}">${esc(psLabel(s))}</button>`).join('')}</div><label style="margin-top:.6rem">নোট (ক্লায়েন্টকে পাঠানো হবে, ঐচ্ছিক)<input data-status-note maxlength="500"></label></div>` : ''}
+      ${isCourse ? courseCard : `<div class="pipeline">${pipeline.map((s, i) => `<span class="${i < curIdx ? 'done' : i === curIdx ? 'cur' : ''}">${esc(s.label)}</span>`).join('')}</div>`}
+      ${can('orders.write') && d.nextStatuses.length ? `<div class="card"><h3>${isCourse ? 'অর্ডার বাতিল (ফেরত দিলে) — কোর্স এক্সেসও বন্ধ হবে' : 'পরের ধাপে নিন'}</h3><div style="display:flex;gap:.4rem;flex-wrap:wrap">${d.nextStatuses.map((s) => `<button class="btn ${s === 'cancelled' ? 'danger' : 'primary'} sm" data-status="${s}">${esc(psLabel(s))}</button>`).join('')}</div><label style="margin-top:.6rem">নোট (ক্লায়েন্টকে পাঠানো হবে, ঐচ্ছিক)<input data-status-note maxlength="500"></label></div>` : ''}
       ${o.payment_status === 'pending_verification' || (o.payment_status !== 'paid' && o.project_status !== 'cancelled' && ['bank_transfer', 'bkash', 'nagad', 'rocket'].includes(o.payment_method)) ? `<div class="card draft"><h3>পেমেন্ট যাচাই</h3>
         <dl class="kv"><dt>মাধ্যম</dt><dd>${METHOD[o.payment_method] || esc(o.payment_method)}</dd><dt>ট্রানজেকশন আইডি</dt><dd>${esc(o.manual_trx_id || '—')}</dd><dt>প্রেরক</dt><dd>${esc(o.manual_sender || '—')}</dd><dt>প্রত্যাশিত</dt><dd>${taka(o.total)}</dd></dl>
         ${can('orders.payment') ? `<p class="small muted">শুধু ব্যাংক/মোবাইল স্টেটমেন্টে টাকা আসলেই জমা হয়েছে দেখে নিশ্চিত করুন — এটি নিশ্চিত করলেই ইনভয়েস তৈরি হবে ও বিজ্ঞাপনের “পারচেজ” ইভেন্ট যাবে।</p>
@@ -117,7 +125,7 @@ export async function openOrder(id, reload) {
         <div class="card"><h3>মূল্য</h3><dl class="kv">${d.items.map((i) => `<dt>${esc(i.package_name)}</dt><dd>${taka(i.total)}${i.addons.length ? `<br><span class="small muted">${i.addons.map((a) => esc(a.name) + (a.quantity > 1 ? ' × ' + bn(a.quantity) : '')).join(', ')}</span>` : ''}</dd>`).join('')}
           ${o.offer_discount ? `<dt>অফার ছাড়</dt><dd>−${taka(o.offer_discount)}</dd>` : ''}${o.coupon_discount ? `<dt>কুপন ${esc(o.coupon_code)}</dt><dd>−${taka(o.coupon_discount)}</dd>` : ''}<dt>সর্বমোট</dt><dd><b>${taka(o.total)}</b></dd>${o.paid_at ? `<dt>পরিশোধ</dt><dd>${fmtDate(o.paid_at)}</dd>` : ''}</dl></div>
       </div>
-      <div class="card"><h3>ক্লায়েন্টের প্রজেক্ট তথ্য</h3>${d.requirementsSubmitted ? `<p class="small muted">জমা: ${fmtDate(d.requirementsSubmitted.submitted_at)}</p>${can('requirements.read') ? '<button class="btn sm" data-req>তথ্য দেখুন (অডিট লগে রেকর্ড হবে)</button><div data-req-box></div>' : '<p class="muted">দেখার অনুমতি নেই</p>'}` : '<p class="muted">এখনো জমা দেননি।</p>'}
+      ${isCourse ? '' : `<div class="card"><h3>ক্লায়েন্টের প্রজেক্ট তথ্য</h3>${d.requirementsSubmitted ? `<p class="small muted">জমা: ${fmtDate(d.requirementsSubmitted.submitted_at)}</p>${can('requirements.read') ? '<button class="btn sm" data-req>তথ্য দেখুন (অডিট লগে রেকর্ড হবে)</button><div data-req-box></div>' : '<p class="muted">দেখার অনুমতি নেই</p>'}` : '<p class="muted">এখনো জমা দেননি।</p>'}
         <h3 style="margin-top:.8rem">ক্লায়েন্টের ফাইল</h3><ul>${d.files.filter((f) => f.kind === 'requirement_asset').map((f) => `<li><a href="/api/admin/orders/${id}/files/${f.id}">${esc(f.filename)}</a></li>`).join('') || '<li class="muted">নেই</li>'}</ul></div>
       ${can('orders.write') ? `<div class="card"><h3>প্রিভিউ ও ডেলিভারি</h3>
         <form class="grid" data-delivery><label>প্রিভিউ লিংক <small>ক্লায়েন্ট রিভিউ ধাপে দেখানো হবে</small><input name="preview_url" value="${esc(o.preview_url)}" placeholder="https://"></label>
@@ -125,9 +133,9 @@ export async function openOrder(id, reload) {
         <label>অভ্যন্তরীণ নোট <small>ক্লায়েন্ট দেখবেন না</small><textarea name="internal_notes" rows="3">${esc(o.internal_notes)}</textarea></label>
         <button class="btn primary sm" style="width:max-content">সংরক্ষণ</button></form>
         <h3 style="margin-top:.8rem">ডেলিভারি ফাইল</h3><ul>${d.files.filter((f) => f.kind === 'delivery').map((f) => `<li><a href="/api/admin/orders/${id}/files/${f.id}">${esc(f.filename)}</a> <button class="btn sm danger" data-del-file="${f.id}">মুছুন</button></li>`).join('') || '<li class="muted">নেই</li>'}</ul>
-        <label class="btn sm" style="width:max-content">ফাইল আপলোড<input type="file" data-upload-delivery hidden></label></div>` : ''}
-      <div class="card"><h3>ক্লায়েন্টের সাথে বার্তা</h3><div class="thread">${d.messages.map((m) => `<div class="m ${m.author}">${m.kind !== 'message' ? `<b>${m.kind === 'approval' ? '✓ অনুমোদন' : '↺ সংশোধনের অনুরোধ'}</b><br>` : ''}${esc(m.body)}<small>${m.author === 'client' ? 'ক্লায়েন্ট' : esc(m.admin_name || 'টিম')} · ${fmtDate(m.created_at)}</small></div>`).join('') || '<p class="muted">কোনো বার্তা নেই</p>'}</div>
-        ${can('orders.write') ? '<form data-msg style="display:flex;gap:.4rem;margin-top:.5rem"><input name="body" required placeholder="ক্লায়েন্টকে বার্তা…"><button class="btn sm">পাঠান</button></form>' : ''}</div>
+        <label class="btn sm" style="width:max-content">ফাইল আপলোড<input type="file" data-upload-delivery hidden></label></div>` : ''}`}
+      ${isCourse ? '' : `<div class="card"><h3>ক্লায়েন্টের সাথে বার্তা</h3><div class="thread">${d.messages.map((m) => `<div class="m ${m.author}">${m.kind !== 'message' ? `<b>${m.kind === 'approval' ? '✓ অনুমোদন' : '↺ সংশোধনের অনুরোধ'}</b><br>` : ''}${esc(m.body)}<small>${m.author === 'client' ? 'ক্লায়েন্ট' : esc(m.admin_name || 'টিম')} · ${fmtDate(m.created_at)}</small></div>`).join('') || '<p class="muted">কোনো বার্তা নেই</p>'}</div>
+        ${can('orders.write') ? '<form data-msg style="display:flex;gap:.4rem;margin-top:.5rem"><input name="body" required placeholder="ক্লায়েন্টকে বার্তা…"><button class="btn sm">পাঠান</button></form>' : ''}</div>`}
       <div class="card"><h3>ইতিহাস</h3><ul>${d.history.map((h) => `<li>${fmtDate(h.created_at)} — ${esc(psLabel(h.to_status))}${h.note ? ` <span class="muted">(${esc(h.note)})</span>` : ''} <span class="muted small">${esc(h.actor)}</span></li>`).join('')}</ul></div>`;
   };
   so.body.addEventListener('click', async (e) => {
@@ -320,6 +328,109 @@ export async function packageEditor(root, id) {
     });
     await listView($('[data-offers]', root), offerListCfg('package', Number(id)));
   }
+}
+
+/* ================= Course editor: details + chapters + lessons (video / private link / private file / notes) ================= */
+const LESSON_KIND = { video: '▶ ভিডিও', link: '🔗 প্রাইভেট লিংক', file: '📄 ফাইল', text: '📝 নোট / লেখা' };
+export async function courseEditor(root, id) {
+  const isNew = id === 'new';
+  const c = isNew ? { status: 'coming_soon', level: 'beginner', language: 'বাংলা', price: 0, regular_price: 0 } : await api(`/courses/${id}`);
+  const cats = (state.lookups.courseCategories || []).map((x) => [x.id, `${x.icon || ''} ${x.name}`.trim()]);
+  const fields = [
+    { name: 'category_id', label: 'ক্যাটাগরি', type: 'select', options: cats, required: true, numeric: true },
+    { name: 'title', label: 'কোর্সের নাম', required: true, max: 200 },
+    { name: 'slug', label: 'স্লাগ (ইউআরএল)', required: true, pattern: '[a-z0-9]+(-[a-z0-9]+)*', hint: 'যেমন facebook-ads-mastery — পেজ হবে /course/facebook-ads-mastery' },
+    { name: 'subtitle', label: 'এক লাইনে — কোর্স শেষে শিক্ষার্থী কী পারবেন', max: 300 },
+    { name: 'status', label: 'অবস্থা', type: 'select', options: [['draft', 'খসড়া (সাইটে দেখাবে না)'], ['coming_soon', 'শীঘ্রই আসছে (আগ্রহীদের নাম-নম্বর নেয়)'], ['published', 'প্রকাশিত (ভর্তি চালু)'], ['archived', 'আর্কাইভ (নতুন ভর্তি বন্ধ, ভর্তিরা দেখতে পান)']], required: true },
+    { name: 'price', label: 'দাম (৳) — ০ দিলে ফ্রি কোর্স', type: 'number', min: 0, required: true },
+    { name: 'regular_price', label: 'আগের দাম (৳) — কেটে দেখাবে, না থাকলে ০', type: 'number', min: 0 },
+    { name: 'level', label: 'লেভেল', type: 'select', options: [['beginner', 'একদম নতুনদের জন্য'], ['intermediate', 'মাঝারি'], ['advanced', 'অ্যাডভান্সড'], ['all', 'সবার জন্য']], required: true },
+    { name: 'language', label: 'ভাষা', max: 40 },
+    { name: 'duration_text', label: 'সময়কাল', max: 80, placeholder: 'যেমন: ১২ ঘণ্টা ভিডিও · ৬ সপ্তাহ' },
+    { name: 'cover_image', label: 'কভার ছবি (কার্ড ও শেয়ারে দেখায়, ১৬:৯)', type: 'image' },
+    { name: 'promo_video_url', label: 'পরিচিতি ভিডিও (সবাই দেখবে) — ইউটিউব / ফেসবুক / ভিমিও / ড্রাইভ লিংক অথবা আপলোড', type: 'video' },
+    { name: 'outcomes', label: 'এই কোর্সে যা শিখবেন', type: 'list', rows: 6 },
+    { name: 'description', label: 'কোর্সের বিস্তারিত (ফাঁকা লাইন দিয়ে অনুচ্ছেদ)', type: 'textarea', rows: 7, max: 12000 },
+    { name: 'audience', label: 'এই কোর্স কার জন্য', type: 'list', rows: 4 },
+    { name: 'includes', label: 'যা যা পাচ্ছেন', type: 'list', rows: 4, hint: 'যেমন: সারাজীবন এক্সেস · রিসোর্স ফাইল · প্রাইভেট গ্রুপ' },
+    { name: 'requirements', label: 'শুরু করতে যা লাগবে', type: 'list', rows: 3 },
+    { name: 'faqs', label: 'প্রশ্নোত্তর', type: 'list', rows: 5, hint: 'প্রতি লাইনে: প্রশ্ন | উত্তর' },
+    { name: 'instructor_name', label: 'ইনস্ট্রাক্টরের নাম', max: 100 },
+    { name: 'instructor_bio', label: 'ইনস্ট্রাক্টরের পরিচিতি', type: 'textarea', rows: 3, max: 2000 },
+    { name: 'instructor_photo', label: 'ইনস্ট্রাক্টরের ছবি', type: 'image' },
+    { name: 'is_featured', label: 'হোমপেজে দেখান', type: 'bool' },
+    { name: 'sort_order', label: 'ক্রম', type: 'number' },
+  ];
+  const writable = can('catalog.write');
+  root.innerHTML = `
+    <div class="page-head"><h1>${isNew ? 'নতুন কোর্স' : esc(c.title)}</h1><div class="actions"><a class="btn" href="#/courses">← সব কোর্স</a>${!isNew ? `<a class="btn" href="#/preview?path=${encodeURIComponent('/course/' + c.slug)}">👁 প্রিভিউ</a><a class="btn" href="/course/${esc(c.slug)}" target="_blank" rel="noopener">সেলস পেজ ↗</a><a class="btn" href="/lp/course/${esc(c.slug)}" target="_blank" rel="noopener">বিজ্ঞাপনের পেজ ↗</a><a class="btn" href="#/enrollments?course_id=${c.id}">শিক্ষার্থী</a>` : ''}</div></div>
+    ${!isNew && c.status !== 'published' ? `<p class="card draft small">এখন অবস্থা: <b>${esc({ draft: 'খসড়া', coming_soon: 'শীঘ্রই আসছে', archived: 'আর্কাইভ' }[c.status] || c.status)}</b> — ভর্তি বন্ধ। দাম ও লেসন ঠিক করে অবস্থা “প্রকাশিত” করলেই ভর্তি ও পেমেন্ট চালু হবে।</p>` : ''}
+    <div class="grid" style="grid-template-columns:minmax(0,3fr) minmax(0,2fr);align-items:start">
+      <form class="card grid" data-course>${fields.map((f) => fieldHtml(f, c[f.name])).join('')}
+        ${writable ? '<div><button class="btn primary">সংরক্ষণ করুন</button></div>' : ''}</form>
+      <div class="grid">${isNew ? '<div class="card muted">প্রথমে কোর্সটি সংরক্ষণ করুন, তারপর অধ্যায় ও লেসন যোগ করা যাবে।</div>' : `<div class="card" data-sections></div>
+        <div class="card small"><h3>লেসনের কনটেন্ট কোথায় রাখবেন</h3><ul>
+          <li><b>ভিডিও:</b> ইউটিউবে “Unlisted” করে লিংক দিন (সবচেয়ে সহজ ও দ্রুত), অথবা ভিমিও / গুগল ড্রাইভ (“Anyone with the link”)। ছোট ভিডিও “🔒 প্রাইভেট ভিডিও আপলোড” দিয়ে দিলে শুধু ভর্তি শিক্ষার্থীরাই চালাতে পারবেন।</li>
+          <li><b>প্রাইভেট লিংক:</b> ড্রাইভ ফোল্ডার, গুগল ডক, লাইভ ক্লাসের জুম/মিট, ফেসবুক গ্রুপ — শুধু ভর্তি শিক্ষার্থীরা লেসনের ভেতরে দেখেন, সাইটের কোথাও প্রকাশ পায় না।</li>
+          <li><b>ফাইল:</b> পিডিএফ, শিট, টেমপ্লেট — প্রাইভেট আপলোড; ডাউনলোডের সময় ভর্তি যাচাই হয়।</li>
+          <li><b>ফ্রি প্রিভিউ:</b> যে লেসনে টিক দেবেন সেটি সেলস পেজে সবাই দেখতে পাবে — ১–২টি দিন, বিক্রি বাড়ে।</li></ul>
+          <p class="muted">মনে রাখুন: ইউটিউব/ড্রাইভের লিংক কোনো শিক্ষার্থী চাইলে অন্যকে কপি করে দিতে পারেন — খুব গোপন কনটেন্ট প্রাইভেট আপলোডে রাখুন।</p></div>`}</div>
+    </div>
+    ${isNew ? '' : '<div class="card" data-lessons style="margin-top:1rem"></div>'}`;
+  const form = $('[data-course]', root);
+  bindMedia(form);
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setFieldError(form);
+    const data = readForm(form, fields);
+    try {
+      if (isNew) { const r = await api('/courses', { method: 'POST', body: data }); state.lookups = await api('/lookups'); toast('কোর্স তৈরি হয়েছে — এবার অধ্যায় ও লেসন যোগ করুন'); location.hash = `#/courses/${r.id}`; }
+      else { await api(`/courses/${id}`, { method: 'PUT', body: data }); state.lookups = await api('/lookups'); toast('সংরক্ষিত হয়েছে'); courseEditor(root, id); }
+    } catch (err) { setFieldError(form, err.code, err.message); toast(err.message, true); }
+  });
+  if (isNew) return;
+
+  let sections = [];
+  const loadSections = async () => { sections = (await api(`/course-sections?course_id=${id}&per=200`)).items; };
+  await loadSections();
+  const secName = (sid) => sections.find((x) => x.id === sid)?.title || '—';
+  await listView($('[data-sections]', root), {
+    title: 'অধ্যায় (সেকশন)', singular: 'অধ্যায়', endpoint: '/course-sections', defaultFilters: { course_id: id }, search: false, writePerm: 'catalog.write', perPage: 100, titleKey: 'title',
+    intro: 'যেমন: ১. শুরু করার আগে · ২. পেজ সেটআপ · ৩. বিজ্ঞাপন — ক্রম অনুযায়ী সাজানো থাকে।',
+    fields: [{ name: 'title', label: 'অধ্যায়ের নাম', required: true, max: 200 }, { name: 'sort_order', label: 'ক্রম', type: 'number', default: 0 }],
+    newValues: { sort_order: (sections.at(-1)?.sort_order || 0) + 1 },
+    toApi: (d) => { setTimeout(() => loadSections(), 400); return { ...d, course_id: Number(id) }; },
+    columns: [{ label: '#', render: (x) => bn(x.sort_order) }, { label: 'অধ্যায়', render: (x) => `<b>${esc(x.title)}</b>` }],
+  });
+  const lessonFields = () => [
+    { name: 'title', label: 'লেসনের নাম', required: true, max: 200 },
+    { name: 'section_id', label: 'অধ্যায়', type: 'select', options: () => sections.map((x) => [x.id, `${bn(x.sort_order)}. ${x.title}`]), numeric: true },
+    { name: 'kind', label: 'ধরন', type: 'select', options: Object.entries(LESSON_KIND), required: true },
+    { name: 'video_url', label: 'ভিডিও — ইউটিউব (আনলিস্টেড) / ভিমিও / ড্রাইভ লিংক অথবা প্রাইভেট আপলোড', type: 'video', private: true },
+    { name: 'link_url', label: 'প্রাইভেট লিংক (শুধু ভর্তি শিক্ষার্থী দেখবেন) — ড্রাইভ ফোল্ডার, ডক, লাইভ ক্লাস, গ্রুপ', inputType: 'url', placeholder: 'https://', max: 1000 },
+    { name: 'file_key', label: 'ফাইল (পিডিএফ / শিট / টেমপ্লেট)', type: 'privatefile' },
+    { name: 'body', label: 'লেসনের নোট / লেখা (ভিডিওর নিচে দেখাবে)', type: 'textarea', rows: 5, max: 20000 },
+    { name: 'duration_text', label: 'সময়', max: 40, placeholder: 'যেমন ১২ মিনিট' },
+    { name: 'sort_order', label: 'ক্রম (অধ্যায়ের ভেতরে)', type: 'number', default: 0 },
+    { name: 'is_preview', label: 'ফ্রি প্রিভিউ — ভর্তির আগেই সেলস পেজে সবাই দেখবে', type: 'bool' },
+    { name: 'is_active', label: 'সক্রিয়', type: 'bool', default: 1 },
+  ];
+  const content = (l) => [l.video_url ? (String(l.video_url).startsWith('private/') ? '🔒 ভিডিও' : '▶ ভিডিও') : '', l.link_url ? '🔗 লিংক' : '', l.file_key ? '📄 ফাইল' : '', l.body ? '📝 নোট' : ''].filter(Boolean).join(' · ');
+  await listView($('[data-lessons]', root), {
+    title: 'লেসন', singular: 'লেসন', endpoint: '/course-lessons', defaultFilters: { course_id: id }, writePerm: 'catalog.write', perPage: 200, titleKey: 'title', wideForm: true,
+    intro: 'প্রতিটি লেসনে ভিডিও, প্রাইভেট লিংক, ফাইল ও নোট — যেকোনোটি বা একসাথে কয়েকটি দেওয়া যায়। শিক্ষার্থী প্রোফাইলে লেসন ধরে ধরে দেখেন, কোনটি শেষ করেছেন মনে থাকে।',
+    filters: [{ name: 'section_id', label: 'অধ্যায়', options: () => sections.map((x) => [x.id, x.title]) }],
+    fields: lessonFields,
+    newValues: { kind: 'video', is_active: 1, sort_order: 0 },
+    toApi: (d) => ({ ...d, course_id: Number(id) }),
+    columns: [
+      { label: 'অধ্যায়', render: (l) => `<span class="small">${esc(secName(l.section_id))}</span>` },
+      { label: '#', render: (l) => bn(l.sort_order) },
+      { label: 'লেসন', render: (l) => `<b>${esc(l.title)}</b>${l.duration_text ? ` <span class="small muted">· ${esc(l.duration_text)}</span>` : ''}<br><span class="small muted">${esc(LESSON_KIND[l.kind] || l.kind)}</span>` },
+      { label: 'কনটেন্ট', render: (l) => (content(l) ? `<span class="small">${content(l)}</span>` : statusPill('কনটেন্ট নেই', 'warn')) },
+      { label: '', render: (l) => (l.is_preview ? statusPill('ফ্রি প্রিভিউ', 'info') + ' ' : '') + (l.is_active ? '' : statusPill('বন্ধ', 'bad')) },
+    ],
+  });
 }
 
 export function offerFields() {
@@ -635,6 +746,7 @@ const DEVICES = [['desktop', '🖥 ডেস্কটপ', 1280], ['tablet', '�
 const EDIT_ROUTES = {
   package: (id) => `#/packages/${id}`, faqs: (id) => `#/packages/${id}`, design: (id) => `#/designs/${id}`,
   portfolio: (id) => `#/portfolio/${id}`, category: (id) => `#/categories/${id}`, settings: () => '#/settings',
+  course: (id) => `#/courses/${id}`, 'course-category': (id) => `#/course-categories/${id}`,
 };
 const EDIT_CSS = `[data-edit]{outline:2px dashed rgba(139,92,246,.85)!important;outline-offset:3px;cursor:pointer!important;position:relative}
 [data-edit]:hover{outline:3px solid #f59e0b!important}
@@ -719,6 +831,14 @@ export async function previewView(root, startPath) {
 export function helpView(root) {
   root.innerHTML = `<div class="card help" style="max-width:860px"><h1>সহায়তা কেন্দ্র</h1>
   <h2>নতুন প্যাকেজ যোগ করা</h2><ol><li>বাম মেনু › প্যাকেজ › “+ নতুন প্যাকেজ”।</li><li>নাম, দাম ও ফিচার লিখে সংরক্ষণ করুন।</li><li>“এআই দিয়ে সাজেস্ট” চাপলে একটি খসড়া আসবে — পড়ে, সম্পাদনা করে অনুমোদন দিন।</li><li>স্ক্রিনশট ও ছোট ডেমো ভিডিও আপলোড করুন, লাইভ ডেমো লিংক দিন।</li><li>অ্যাড-অন ও অফার ডান পাশ থেকে যোগ করুন।</li></ol>
+  <h2>কোর্স বিক্রি — শুরু থেকে শেষ</h2><ol>
+    <li><b>কোর্স ক্যাটাগরি</b> › “+ নতুন” — যত খুশি ক্যাটাগরি (ডিজিটাল মার্কেটিং, ডেভেলপমেন্ট, পাইথন…)।</li>
+    <li><b>কোর্স</b> › “+ নতুন” — নাম, দাম, কভার, পরিচিতি ভিডিও, যা শিখবেন, প্রশ্নোত্তর লিখে সংরক্ষণ করুন।</li>
+    <li>কোর্স খুলে <b>অধ্যায়</b> যোগ করুন, তারপর প্রতিটি <b>লেসন</b>: ইউটিউব (আনলিস্টেড) / ড্রাইভ লিংক, প্রাইভেট ভিডিও বা ফাইল আপলোড, প্রাইভেট লিংক ও নোট। ১–২টি লেসনে “ফ্রি প্রিভিউ” দিন।</li>
+    <li>অবস্থা “প্রকাশিত” করুন — সেলস পেজ (/course/…) ও বিজ্ঞাপনের পেজ (/lp/course/…) চালু হবে।</li>
+    <li>শিক্ষার্থী ভর্তি ফর্মে নাম, মোবাইল ও পাসওয়ার্ড দিয়ে পেমেন্ট করেন। গেটওয়ে পেমেন্ট সাথে সাথে, সেন্ড মানি হলে <b>অর্ডার</b> থেকে আপনি যাচাই করলে — তখনই কোর্সটি তার প্রোফাইলে (“আমার কোর্স”) খোলে। তার আগে কোনো লেসন দেখা যায় না।</li>
+    <li>পাসওয়ার্ড ভুলে গেলে: <b>শিক্ষার্থী</b> › সম্পাদনা › নতুন পাসওয়ার্ড। উপহার / অফলাইন পেমেন্ট: <b>কোর্স এক্সেস</b> › “+ নতুন”।</li></ol>
+  <p class="small muted">বিজ্ঞাপন ট্র্যাকিং: কোর্স পেজ দেখলে ViewContent, ভর্তি ফর্ম জমা দিলে InitiateCheckout, আর আসল পেমেন্ট নিশ্চিত হলেই Purchase — পিক্সেল, কনভার্সন এপিআই ও জিএ৪ তিন জায়গাতেই একই ইভেন্ট আইডিতে (দুবার গোনা হয় না)। ফ্রি কোর্সে Purchase যায় না।</p>
   <h2>অফার ও টাইমার</h2><p>অফারের “শেষ” সময় পার হলেই সার্ভার নিজে থেকে ছাড় দেওয়া বন্ধ করে দেয় — টাইমার শুধু দেখানোর জন্য নয়।</p>
   <h2>বিজ্ঞাপনের জন্য ল্যান্ডিং পেজ</h2><ol><li>ল্যান্ডিং পেজ › নতুন — ব্লক যোগ করে পেজ সাজান।</li><li>“সংরক্ষণ ও প্রকাশ” করুন। বিজ্ঞাপনে যে লিংক দেবেন তা পেজের উপরে দেখানো আছে — utm_content এ বিজ্ঞাপনের নাম দিন, তাহলে রিপোর্টে প্রতিটি ক্রিয়েটিভের ফল আলাদা দেখা যাবে।</li><li>ক্যাম্পেইন শেষ হলে “অবসরে পাঠান”।</li></ol>
   <h2>অর্ডারের ধাপ</h2><p>পেমেন্টের অপেক্ষায় → নিশ্চিত → তথ্য সংগ্রহ → ডেভেলপমেন্ট → ক্লায়েন্ট রিভিউ → সংশোধন → ডেলিভারি → সম্পূর্ণ। প্রতিটি ধাপ বদলালে ক্লায়েন্ট স্বয়ংক্রিয়ভাবে বার্তা পান। পেমেন্ট নিশ্চিত না হলে প্রজেক্ট সামনে এগোনো যায় না।</p>

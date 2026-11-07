@@ -73,7 +73,7 @@ orders.post('/api/pricing/quote', async (c) => {
   return ok(c, { ...price, couponMessage: price.couponError ? COUPON_ERROR_BN[price.couponError] : null });
 });
 
-async function startPayment(c: Context<AppBindings>, order: OrderRow, productName: string): Promise<{ redirectUrl: string | null }> {
+export async function startPayment(c: Context<AppBindings>, order: OrderRow, productName: string): Promise<{ redirectUrl: string | null }> {
   const s = await getSettings(c.env);
   const via = usesGateway(c.env, s, order.payment_method as PaymentMethod);
   if (via === 'sslcommerz') {

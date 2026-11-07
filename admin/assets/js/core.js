@@ -55,9 +55,11 @@ export function slideOver(title, { wide = false } = {}) {
   el.setAttribute('aria-label', title);
   el.innerHTML = `<header><h2>${esc(title)}</h2><button class="btn icon" data-x aria-label="বন্ধ করুন">✕</button></header><div class="body"></div><footer></footer>`;
   document.body.append(ov, el);
-  const close = () => { ov.remove(); el.remove(); document.removeEventListener('keydown', onKey); };
+  const close = () => { ov.remove(); el.remove(); document.removeEventListener('keydown', onKey); removeEventListener('hashchange', close); };
   const onKey = (e) => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', onKey);
+  // Going to another page (a link inside the panel, or the browser's back button) closes the panel.
+  addEventListener('hashchange', close);
   ov.addEventListener('click', close);
   $('[data-x]', el).addEventListener('click', close);
   return { el, body: $('.body', el), footer: $('footer', el), close };
@@ -98,7 +100,9 @@ export function fieldHtml(f, v) {
       const arr = Array.isArray(val) ? val : (() => { try { return JSON.parse(val || '[]'); } catch { return []; } })();
       return `<div><label>${label}</label><div class="thumbs" data-media-field="${f.name}" data-multi="1">${mediaThumbs(arr)}</div><input type="hidden" name="${f.name}" value="${esc(JSON.stringify(arr))}"><div class="media-btns"><label class="btn sm">ছবি আপলোড<input type="file" accept="image/*" multiple data-upload-for="${f.name}" hidden></label><button type="button" class="btn sm" data-add-url-for="${f.name}">ছবির লিংক যোগ করুন</button></div><small class="muted">প্রথম ছবিটি আগে দেখায়। ক্রম বদলাতে সরিয়ে আবার যোগ করুন।</small></div>`;
     }
-    case 'video': return `<div class="video-field"><label>${label}<input type="text" name="${f.name}" value="${esc(val)}" maxlength="500" placeholder="https://youtu.be/… · facebook.com/…/videos/… · vimeo.com/… · drive.google.com/… · .mp4" data-video-input></label><div class="media-btns"><label class="btn sm">ভিডিও ফাইল আপলোড<input type="file" accept="video/mp4,video/webm" data-upload-to-input="${f.name}" hidden></label><span class="small muted" data-video-kind>${videoKind(val)}</span></div></div>`;
+    case 'video': return `<div class="video-field"><label>${label}<input type="text" name="${f.name}" value="${esc(val)}" maxlength="500" placeholder="https://youtu.be/… · facebook.com/…/videos/… · vimeo.com/… · drive.google.com/… · .mp4" data-video-input></label><div class="media-btns">${f.private ? `<label class="btn sm">🔒 প্রাইভেট ভিডিও আপলোড<input type="file" accept="video/mp4,video/webm,.m4v" data-upload-to-input="${f.name}" data-private="1" hidden></label>` : `<label class="btn sm">ভিডিও ফাইল আপলোড<input type="file" accept="video/mp4,video/webm" data-upload-to-input="${f.name}" hidden></label>`}<span class="small muted" data-video-kind>${videoKind(val)}</span></div></div>`;
+    // Course material kept private: only an enrolled student can download it (never a public /media link).
+    case 'privatefile': return `<div class="video-field"><label>${label}<input type="text" name="${f.name}" value="${esc(val)}" maxlength="300" placeholder="আপলোড করলে নিজে থেকেই বসবে" readonly data-private-file></label><div class="media-btns"><label class="btn sm">🔒 প্রাইভেট ফাইল আপলোড<input type="file" accept=".pdf,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.webp,.mp3,.m4a,.mp4,.webm" data-upload-to-input="${f.name}" data-private="1" hidden></label><button type="button" class="btn sm" data-clear-input="${f.name}">সরান</button><span class="small muted">পিডিএফ, জিপ, ডক, এক্সেল, স্লাইড, অডিও — সর্বোচ্চ ৯৫ মেগাবাইট</span></div></div>`;
     case 'links': {
       const arr = Array.isArray(val) ? val : (() => { try { return JSON.parse(val || '[]'); } catch { return []; } })();
       return `<label>${label} <small>(প্রতি লাইনে: লেবেল | https://লিংক)</small><textarea name="${f.name}" rows="${f.rows || 3}" data-links>${esc(arr.map((l) => `${l.label} | ${l.url}`).join('\n'))}</textarea></label>`;
@@ -128,6 +132,7 @@ export function videoKind(v) {
   if (/vimeo\.com/.test(s)) return '✓ ভিমিও ভিডিও';
   if (/facebook\.com|fb\.watch/.test(s)) return '✓ ফেসবুক ভিডিও';
   if (/drive\.google\.com/.test(s)) return '✓ গুগল ড্রাইভ ভিডিও (শেয়ার: Anyone with the link)';
+  if (s.startsWith('private/')) return '🔒 প্রাইভেট ভিডিও — শুধু ভর্তি হওয়া শিক্ষার্থীরা দেখবেন';
   if (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(s) || !/^https?:/.test(s)) return '✓ ভিডিও ফাইল';
   return 'বাইরের লিংক — বোতাম হিসেবে দেখাবে';
 }
@@ -179,15 +184,21 @@ export function bindMedia(form) {
     const target = form.querySelector(`[name="${inp.dataset.uploadToInput}"]`);
     const fd = new FormData();
     fd.append('file', inp.files[0]);
+    if (inp.dataset.private === '1') fd.append('private', '1');
+    const btn = inp.closest('label');
+    btn?.classList.add('busy');
     try {
       const r = await api('/uploads', { method: 'POST', body: fd });
       target.value = r.key;
       target.dispatchEvent(new Event('input', { bubbles: true }));
       toast('আপলোড সম্পন্ন');
     } catch (err) { toast(err.message, true); }
+    btn?.classList.remove('busy');
     inp.value = '';
   }));
   form.addEventListener('click', (e) => {
+    const clr = e.target.closest('[data-clear-input]');
+    if (clr) { const t = form.querySelector(`[name="${clr.dataset.clearInput}"]`); if (t) t.value = ''; return; }
     const add = e.target.closest('[data-add-url-for]');
     if (add) {
       const name = add.dataset.addUrlFor;

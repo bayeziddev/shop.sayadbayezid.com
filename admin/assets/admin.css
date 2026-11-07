@@ -149,3 +149,4 @@ dialog.confirm::backdrop { background: rgba(5,3,20,.6); }
 .tour-preview img { width: 120px; height: 75px; object-fit: cover; object-position: top; border-radius: 6px; border: 1px solid var(--border); }
 .tour-preview figcaption { font-size: .75rem; color: var(--muted); }
 textarea.mono-ish { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+.btn.busy { opacity: .6; pointer-events: none; } .btn.busy::after { content: ' — আপলোড হচ্ছে…'; }

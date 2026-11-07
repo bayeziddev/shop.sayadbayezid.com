@@ -50,18 +50,18 @@ test('configure → checkout → pay → requirements', async ({ page, browser }
 
   // 4) Admin verifies the payment
   const admin = await (await browser.newContext()).newPage();
+  // First-run setup (a 409 means another spec already did it), then the real login screen.
+  await admin.request.post('/api/admin/auth/setup', { data: { token: 'e2e-setup-token', name: 'অ্যাডমিন', email: 'admin@e2e.local', password: 'e2e-password-123' } });
   await admin.goto('/admin/');
-  await admin.fill('input[name=token]', 'e2e-setup-token');
-  await admin.fill('input[name=name]', 'অ্যাডমিন');
-  await admin.fill('input[name=email]', 'admin@e2e.local');
-  await admin.fill('input[name=password]', 'e2e-password-123');
-  await admin.click('button.primary');
   await expect(admin.getByRole('heading', { name: 'অ্যাডমিন লগইন' })).toBeVisible();
   await admin.fill('input[name=email]', 'admin@e2e.local');
   await admin.fill('input[name=password]', 'e2e-password-123');
   await admin.click('button.primary');
   await admin.waitForSelector('.kpis');
-  await admin.goto('/admin/#/orders/1');
+  // Find this order by its number (other specs may have created orders first).
+  const orderNo = decodeURIComponent(orderUrl.split('/order/')[1].split('?')[0]);
+  const found = await (await admin.request.get(`/api/admin/orders?q=${encodeURIComponent(orderNo)}`)).json();
+  await admin.goto(`/admin/#/orders/${found.data.items[0].id}`);
   await admin.check('[data-paid-confirm]');
   await admin.click('[data-verify]');
   await expect(admin.locator('.slide')).toContainText('INV-');

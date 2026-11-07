@@ -8,6 +8,8 @@ import {
   type ReviewView, type DesignView, type PortfolioView,
 } from './components';
 import type { SiteSettings } from '../lib/settings';
+import type { PublicCourse, CourseCategoryRow } from '../lib/courses';
+import { courseBrowser } from './courses';
 
 export interface HomeData {
   settings: SiteSettings;
@@ -26,6 +28,12 @@ export interface HomeData {
   problems: { title: string; text: string }[];
   minPrice: number | null;
   now: number;
+  /** Online courses: their own lane on the home page. */
+  courseCategories: CourseCategoryRow[];
+  courses: PublicCourse[];
+  /** Real count of students with an open course (shown only when above zero). */
+  students: number;
+  studentUrl: string;
 }
 
 export function homePage(d: HomeData): Raw {
@@ -36,45 +44,91 @@ export function homePage(d: HomeData): Raw {
     d.stats.reviewCount > 0 ? html`<div class="stat"><strong>${bnDigits(d.stats.reviewAvg.toFixed(1))}/৫</strong><span>${bnDigits(d.stats.reviewCount)}টি ক্লায়েন্ট রিভিউর গড়</span></div>` : '',
   ].filter(Boolean);
   const kinds = DESIGN_KINDS.filter(([k]) => d.designs.some((x) => x.kind === k));
+  const courseCount = d.courses.length;
+  const liveCourses = d.courses.filter((c) => !c.comingSoon);
+  const courseMin = liveCourses.length ? Math.min(...liveCourses.map((c) => c.price)) : null;
   return html`
-<section class="hero mesh">
-  <div class="container hero-grid">
-    <div class="hero-copy reveal" data-edit="settings">
-      <span class="eyebrow">রেডি ওয়েবসাইট · লাইভ ডেমো${d.minPrice ? html` · ${taka(d.minPrice)} থেকে` : ''}</span>
-      <h1>ইনবক্স নয়, <span class="grad-text">নিজের অনলাইন দোকানে</span> অর্ডার নিন — ২৪ ঘণ্টা, গুছিয়ে</h1>
+<section class="hero hero-paths mesh">
+  <div class="container">
+    <div class="paths-head reveal" data-edit="settings">
+      <span class="eyebrow">${d.settings.brand_name} · ওয়েবসাইট ও অনলাইন কোর্স</span>
+      <h1>ব্যবসা অনলাইনে নিন — <span class="grad-text">রেডি ওয়েবসাইট</span> দিয়ে বিক্রি শুরু করুন, <span class="grad-text-c">কোর্সে শিখে</span> নিজেই বড় করুন</h1>
       <p class="lead">${d.settings.brand_tagline}</p>
-      <div class="hero-cta">
-        <a class="btn btn-primary btn-lg" href="/packages">সব রেডি ওয়েবসাইট দেখুন <span aria-hidden="true">→</span></a>
-        <a class="btn btn-ghost btn-lg" href="/designs">ডিজাইন গ্যালারি দেখুন</a>
-      </div>
-      <ul class="hero-points"><li>✓ কেনার আগে লাইভ ডেমোতে নিজে চালিয়ে দেখুন</li><li>✓ এক দাম — বিক্রি থেকে কোনো কমিশন নেই</li><li>✓ আপনার অনুমোদনের পরেই লাইভ</li></ul>
-      ${d.settings.lead_box_enabled ? html`<button type="button" class="link-cta hero-advice" data-leadbox-open data-leadbox-from="hero">কোনটা নেবেন বুঝতে পারছেন না? ২ মিনিটে ফ্রি পরামর্শ নিন →</button>` : ''}
     </div>
-    ${showcase.length ? html`<div class="showcase reveal" data-rotator aria-roledescription="স্লাইডশো" aria-label="আমাদের রেডি ওয়েবসাইটের ডেমো">
-      ${showcase.map((p, i) => html`<figure class="slide ${i === 0 ? 'is-active' : ''}" data-slide>
-        <a href="/package/${p.slug}" aria-label="${p.name} — বিস্তারিত দেখুন">${browserFrame(p, { eager: i === 0, video: true })}</a>
-        <figcaption><span><strong>${p.name}</strong></span>${demoLink(p, p.demoUrl, 'লাইভ ডেমো খুলুন', 'link-cta')}</figcaption>
-      </figure>`)}
-      <div class="dots">${showcase.map((_, i) => html`<button data-dot="${i}" aria-label="স্লাইড ${bnDigits(i + 1)}" ${i === 0 ? raw('aria-current="true"') : ''}></button>`)}</div>
-    </div>` : ''}
+    <div class="paths">
+      <a class="path path-web reveal" href="#websites">
+        <span class="path-n" aria-hidden="true">০১</span>
+        <span class="path-ico" aria-hidden="true">🛒</span>
+        <h2>রেডি ওয়েবসাইট</h2>
+        <p>ইনবক্স নয়, নিজের অনলাইন দোকানে অর্ডার নিন — ২৪ ঘণ্টা, গুছিয়ে।</p>
+        <ul><li>কেনার আগে লাইভ ডেমো চালিয়ে দেখুন</li><li>এক দাম — বিক্রি থেকে কোনো কমিশন নেই</li><li>আপনার অনুমোদনের পরেই লাইভ</li></ul>
+        <span class="path-foot"><span>${bnDigits(d.categories.filter((c) => c.package_count > 0).length)}টি ব্যবসার ধরন${d.minPrice ? html` · ${taka(d.minPrice)} থেকে` : ''}</span><span class="path-go">ওয়েবসাইট দেখুন <span aria-hidden="true">↓</span></span></span>
+      </a>
+      <a class="path path-course reveal" href="#courses">
+        <span class="path-n" aria-hidden="true">০২</span>
+        <span class="path-ico" aria-hidden="true">🎓</span>
+        <h2>অনলাইন কোর্স</h2>
+        <p>ডিজিটাল মার্কেটিং, ডেভেলপমেন্ট, পাইথন — লেসন ধরে ধরে, হাতে-কলমে শিখুন।</p>
+        <ul><li>ফ্রি প্রিভিউ লেসন দেখে তারপর ভর্তি</li><li>পেমেন্ট নিশ্চিত হলেই কোর্স প্রোফাইলে চালু</li><li>নিজের সময়ে, মোবাইলেই শিখুন</li></ul>
+        <span class="path-foot"><span>${courseCount ? html`${bnDigits(courseCount)}টি কোর্স${courseMin !== null ? html` · ${courseMin ? html`${taka(courseMin)} থেকে` : 'ফ্রি কোর্সও আছে'}` : ''}` : 'নতুন কোর্স শীঘ্রই'}${d.students > 0 ? html` · ${bnDigits(d.students)} জন শিক্ষার্থী` : ''}</span><span class="path-go">কোর্স দেখুন <span aria-hidden="true">↓</span></span></span>
+      </a>
+    </div>
+    ${d.settings.lead_box_enabled ? html`<p class="paths-more"><button type="button" class="link-cta hero-advice" data-leadbox-open data-leadbox-from="hero">কোন ওয়েবসাইট নেবেন বুঝতে পারছেন না? ২ মিনিটে ফ্রি পরামর্শ নিন →</button></p>` : ''}
+  </div>
+</section>
+
+<section class="lane lane-web" id="websites" aria-labelledby="lane-web-h">
+  <div class="container">
+    <header class="lane-head">
+      <span class="lane-n" aria-hidden="true">০১</span>
+      <div class="lane-title"><span class="lane-kicker">ওয়েবসাইট</span><h2 id="lane-web-h">আপনার ব্যবসার জন্য রেডি ওয়েবসাইট</h2><p>পাশের তালিকা থেকে ব্যবসার ধরন বেছে নিন — প্রতিটি সাইটের লাইভ ডেমো আছে, এক দাম ${d.minPrice ? taka(d.minPrice) : ''}</p></div>
+      <a class="btn btn-ghost" href="/packages">সব প্যাকেজ এক পেজে <span aria-hidden="true">→</span></a>
+    </header>
+    <div class="lane-intro">
+      <div class="hero-copy reveal" data-edit="settings">
+        <h3 class="lane-sub">ইনবক্স নয়, <span class="grad-text">নিজের অনলাইন দোকানে</span> অর্ডার নিন — ২৪ ঘণ্টা, গুছিয়ে</h3>
+        <ul class="hero-points"><li>✓ কেনার আগে লাইভ ডেমোতে নিজে চালিয়ে দেখুন</li><li>✓ এক দাম — বিক্রি থেকে কোনো কমিশন নেই</li><li>✓ আপনার অনুমোদনের পরেই লাইভ</li></ul>
+        <div class="hero-cta">
+          <a class="btn btn-primary btn-lg" href="#categories">ব্যবসার ধরন বেছে নিন <span aria-hidden="true">↓</span></a>
+          <a class="btn btn-ghost btn-lg" href="/designs">ডিজাইন গ্যালারি</a>
+        </div>
+      </div>
+      ${showcase.length ? html`<div class="showcase reveal" data-rotator aria-roledescription="স্লাইডশো" aria-label="আমাদের রেডি ওয়েবসাইটের ডেমো">
+        ${showcase.map((p, i) => html`<figure class="slide ${i === 0 ? 'is-active' : ''}" data-slide>
+          <a href="/package/${p.slug}" aria-label="${p.name} — বিস্তারিত দেখুন">${browserFrame(p, { eager: i === 0, video: true })}</a>
+          <figcaption><span><strong>${p.name}</strong></span>${demoLink(p, p.demoUrl, 'লাইভ ডেমো খুলুন', 'link-cta')}</figcaption>
+        </figure>`)}
+        <div class="dots">${showcase.map((_, i) => html`<button data-dot="${i}" aria-label="স্লাইড ${bnDigits(i + 1)}" ${i === 0 ? raw('aria-current="true"') : ''}></button>`)}</div>
+      </div>` : ''}
+    </div>
+    <div id="categories" class="lane-anchor">${catalogBrowser(d.categories, d.packages, d.coupons, d.now, mediaUrl)}</div>
+  </div>
+</section>
+
+<section class="lane lane-course" id="courses" aria-labelledby="lane-course-h">
+  <div class="container">
+    <header class="lane-head">
+      <span class="lane-n" aria-hidden="true">০২</span>
+      <div class="lane-title"><span class="lane-kicker">অনলাইন কোর্স</span><h2 id="lane-course-h">শিখুন, তারপর নিজের ব্যবসা নিজেই বড় করুন</h2><p>ক্যাটাগরি বেছে নিন — প্রতিটি কোর্সে লেসনের পুরো তালিকা আর ফ্রি প্রিভিউ আছে। পেমেন্ট নিশ্চিত হলেই কোর্সটি আপনার প্রোফাইলে খুলে যায়।</p></div>
+      <a class="btn btn-ghost" href="/courses">সব কোর্স <span aria-hidden="true">→</span></a>
+    </header>
+    ${courseBrowser(d.courseCategories, d.courses)}
+    <ol class="flow flow-3 course-steps">
+      <li class="flow-step"><span class="flow-n" aria-hidden="true">১</span><div><h3>কোর্স বেছে ভর্তি হোন</h3><p class="muted">লেসনের তালিকা আর ফ্রি প্রিভিউ দেখে নাম, মোবাইল ও পাসওয়ার্ড দিয়ে ভর্তি ফর্ম পূরণ করুন।</p></div></li>
+      <li class="flow-step"><span class="flow-n" aria-hidden="true">২</span><div><h3>পেমেন্ট নিশ্চিত হলেই চালু</h3><p class="muted">বিকাশ, নগদ, রকেট, কার্ড বা ব্যাংকে পেমেন্ট — নিশ্চিত হলেই কোর্স আপনার প্রোফাইলে খোলে।</p></div></li>
+      <li class="flow-step"><span class="flow-n" aria-hidden="true">৩</span><div><h3>লেসন ধরে ধরে শিখুন</h3><p class="muted">মোবাইল নম্বর ও পাসওয়ার্ডে লগইন — কোন লেসন শেষ হলো, কোথায় থামলেন সব মনে থাকে।</p></div></li>
+    </ol>
+    <p class="center lane-foot"><a class="btn btn-primary btn-lg course-cta" href="/courses">সব কোর্স দেখুন <span aria-hidden="true">→</span></a> <a class="btn btn-ghost btn-lg" href="${d.studentUrl}">আমার কোর্স — লগইন</a></p>
   </div>
 </section>
 
 ${d.problems.length ? html`<section class="section pains" id="problems">
   <div class="container">
-    <header class="section-head" data-edit="settings"><h2>অনলাইনে বিক্রি করতে গিয়ে এই ঝামেলাগুলো কি হচ্ছে?</h2><p class="muted">প্রতিটি ঝামেলার পাশে লেখা — নিজের ওয়েবসাইট কীভাবে সেটা মেটায়</p></header>
+    <header class="section-head" data-edit="settings"><span class="lane-kicker">ওয়েবসাইট</span><h2>অনলাইনে বিক্রি করতে গিয়ে এই ঝামেলাগুলো কি হচ্ছে?</h2><p class="muted">প্রতিটি ঝামেলার পাশে লেখা — নিজের ওয়েবসাইট কীভাবে সেটা মেটায়</p></header>
     ${problemGrid(d.problems)}
     <p class="center pains-cta"><span class="muted">কোন প্যাকেজে কোন সুবিধা আছে, প্রতিটি প্যাকেজ পেজে বিস্তারিত লেখা।</span><br><a class="btn btn-primary btn-lg" href="#categories">আপনার ব্যবসার ধরন বেছে নিন <span aria-hidden="true">↓</span></a></p>
   </div>
 </section>` : ''}
-
-<section class="section" id="categories">
-  <div class="container">
-    <header class="section-head"><h2>আপনার ব্যবসার জন্য রেডি ওয়েবসাইট</h2><p class="muted">পাশের তালিকা থেকে ব্যবসার ধরন বেছে নিন — প্রতিটি সাইটের লাইভ ডেমো আছে, এক দাম ${d.minPrice ? taka(d.minPrice) : ''}</p></header>
-    ${catalogBrowser(d.categories, d.packages, d.coupons, d.now, mediaUrl)}
-    <p class="center"><a class="btn btn-ghost btn-lg" href="/packages">সব প্যাকেজ এক পেজে দেখুন <span aria-hidden="true">→</span></a></p>
-  </div>
-</section>
 
 ${d.designs.length ? html`<section class="section designs-teaser">
   <div class="container">
@@ -87,7 +141,7 @@ ${d.designs.length ? html`<section class="section designs-teaser">
 
 <section class="section how">
   <div class="container">
-    <header class="section-head"><h2>কীভাবে কাজ করে</h2></header>
+    <header class="section-head"><span class="lane-kicker">ওয়েবসাইট</span><h2>ওয়েবসাইট অর্ডার — কীভাবে কাজ করে</h2></header>
     <ol class="steps">
       <li class="card"><span class="step-n">১</span><h3>ডেমো দেখে প্যাকেজ বাছাই করুন</h3><p class="muted">লাইভ ডেমো নিজে চালিয়ে দেখুন আপনার ক্রেতা কী দেখবেন আর আপনি অ্যাডমিনে কী পাবেন — দাম আগেই লেখা।</p></li>
       <li class="card"><span class="step-n">২</span><h3>পেমেন্ট করুন, আমরা বানাই</h3><p class="muted">পেমেন্টের পর আপনার ব্যবসার তথ্য দিন। প্রতিটি ধাপের আপডেট আপনার অর্ডার পেজে পাবেন।</p></li>
@@ -131,6 +185,10 @@ ${d.faqs.length ? html`<section class="section">
     <div class="cta-band mesh">
       <div><h2>কোন সাইট নেবেন বুঝতে পারছেন না?</h2><p>৪টি ছোট প্রশ্নের উত্তর দিন — আমরা আপনার ব্যবসার জন্য উপযুক্ত প্যাকেজ সাজেস্ট করব।</p></div>
       <div class="cta-actions"><a class="btn btn-light btn-lg" href="/quiz">১ মিনিটের কুইজ শুরু করুন</a><a class="btn btn-outline-light btn-lg" href="/quote">ফ্রি কোটেশন নিন</a></div>
+    </div>
+    <div class="cta-band cta-band-course">
+      <div><h2>নিজে শিখে ব্যবসা বড় করতে চান?</h2><p>ফেসবুক বিজ্ঞাপন, ডিজিটাল মার্কেটিং, ওয়েব ডেভেলপমেন্ট — লেসন ধরে ধরে বাংলায় শিখুন।</p></div>
+      <div class="cta-actions"><a class="btn btn-light btn-lg" href="/courses">কোর্সগুলো দেখুন</a></div>
     </div>
   </div>
 </section>`;
@@ -420,30 +478,34 @@ export function checkoutPage(s: SiteSettings, methods: { id: string; label: stri
 export interface OrderView {
   order_number: string; invoice_number: string | null; customer_name: string; payment_status: string; project_status: string;
   payment_method: string; total: number; subtotal: number; offer_discount: number; coupon_discount: number; coupon_code: string | null;
-  manual_trx_id: string | null; created_at: string;
+  manual_trx_id: string | null; created_at: string; kind?: string;
 }
 
 export function orderPage(o: OrderView, token: string, d: { statusLabel: string; paymentLabel: string; methodLabel: string; manual: null | { title: string; lines: string[] }; cancelled: boolean }): Raw {
   const paid = o.payment_status === 'paid';
+  const course = o.kind === 'course';
   return html`
 <section class="section">
   <div class="container narrow">
     <div class="card result ${paid ? 'is-success' : ''}">
       ${paid
-        ? html`<div class="result-ico">✓</div><h1>পেমেন্ট সফল হয়েছে!</h1><p>ধন্যবাদ ${o.customer_name}। আপনার অর্ডার <strong>${o.order_number}</strong> নিশ্চিত হয়েছে। এখন প্রজেক্ট শুরু করতে আপনার ব্যবসার তথ্য জমা দিন।</p>
+        ? course
+          ? html`<div class="result-ico">✓</div><h1>পেমেন্ট সফল — কোর্স চালু হয়েছে!</h1><p>ধন্যবাদ ${o.customer_name}। কোর্সটি আপনার প্রোফাইলে যোগ হয়েছে। মোবাইল নম্বর আর পাসওয়ার্ড দিয়ে লগইন করে লেসন ধরে ধরে দেখুন।</p>
+            <a class="btn btn-primary btn-lg" href="/student">আমার কোর্সে যান →</a>`
+          : html`<div class="result-ico">✓</div><h1>পেমেন্ট সফল হয়েছে!</h1><p>ধন্যবাদ ${o.customer_name}। আপনার অর্ডার <strong>${o.order_number}</strong> নিশ্চিত হয়েছে। এখন প্রজেক্ট শুরু করতে আপনার ব্যবসার তথ্য জমা দিন।</p>
             <a class="btn btn-primary btn-lg" href="/portal/${o.order_number}?t=${token}">প্রজেক্টের তথ্য জমা দিন →</a>`
         : o.payment_status === 'pending_verification'
-          ? html`<div class="result-ico">⏳</div><h1>পেমেন্ট যাচাই করা হচ্ছে</h1><p>আপনার ট্রানজেকশন আইডি <strong>${o.manual_trx_id}</strong> আমরা পেয়েছি। যাচাই শেষে আপনাকে জানানো হবে এবং তথ্য জমার পেজ খুলে যাবে।</p>`
+          ? html`<div class="result-ico">⏳</div><h1>পেমেন্ট যাচাই করা হচ্ছে</h1><p>আপনার ট্রানজেকশন আইডি <strong>${o.manual_trx_id}</strong> আমরা পেয়েছি। ${course ? 'যাচাই শেষেই কোর্সটি আপনার প্রোফাইলে চালু হবে — লগইন করে দেখতে পাবেন।' : 'যাচাই শেষে আপনাকে জানানো হবে এবং তথ্য জমার পেজ খুলে যাবে।'}</p>${course ? html`<a class="btn btn-ghost" href="/student">আমার প্রোফাইল</a>` : ''}`
           : d.cancelled
             ? html`<div class="result-ico">!</div><h1>পেমেন্ট সম্পন্ন হয়নি</h1><p>চিন্তার কিছু নেই — আপনার অর্ডার সংরক্ষিত আছে। নিচ থেকে আবার চেষ্টা করুন।</p>`
-            : html`<div class="result-ico">৳</div><h1>পেমেন্ট বাকি আছে</h1><p>অর্ডার <strong>${o.order_number}</strong> তৈরি হয়েছে। পেমেন্ট সম্পন্ন হলেই কাজ শুরু হবে।</p>`}
+            : html`<div class="result-ico">৳</div><h1>পেমেন্ট বাকি আছে</h1><p>অর্ডার <strong>${o.order_number}</strong> তৈরি হয়েছে। ${course ? 'পেমেন্ট নিশ্চিত হলেই কোর্সটি আপনার প্রোফাইলে চালু হবে।' : 'পেমেন্ট সম্পন্ন হলেই কাজ শুরু হবে।'}</p>`}
       <dl class="kv">
         <dt>অর্ডার নম্বর</dt><dd>${o.order_number}</dd>
         ${o.invoice_number ? html`<dt>ইনভয়েস নম্বর</dt><dd>${o.invoice_number}</dd>` : ''}
         <dt>মোট</dt><dd>${taka(o.total)}</dd>
         <dt>পেমেন্ট মাধ্যম</dt><dd>${d.methodLabel}</dd>
         <dt>পেমেন্টের অবস্থা</dt><dd>${d.paymentLabel}</dd>
-        <dt>প্রজেক্টের অবস্থা</dt><dd>${d.statusLabel}</dd>
+        ${course ? '' : html`<dt>প্রজেক্টের অবস্থা</dt><dd>${d.statusLabel}</dd>`}
       </dl>
       ${!paid && o.payment_status !== 'pending_verification' ? html`
         ${d.manual ? html`<div class="manual-pay"><h2>${d.manual.title}</h2>${d.manual.lines.map((l) => html`<p>${l}</p>`)}

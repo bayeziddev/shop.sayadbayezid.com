@@ -8,7 +8,8 @@ import { liveOffer } from '../views/components';
 import { isOfferLive } from '../../../shared/pricing';
 import { offerFromRow, type OfferRow } from '../lib/catalog';
 import { randomToken, parseJson } from '../lib/util';
-import { getOrderByNumber, getOrderItems } from '../lib/orders';
+import { contentIdOf, getOrderByNumber, getOrderItems } from '../lib/orders';
+import { loadCourseCategories, loadPublicCourses } from '../lib/courses';
 import { verifyPortalToken } from '../lib/portal-token';
 import { PAYMENT_METHOD_BN, PAYMENT_STATUS_BN, PROJECT_STATUS_BN, type PaymentMethod, type ProjectStatus, type PaymentStatus } from '../../../shared/status';
 import { manualInstructions, availableMethods } from './orders';
@@ -44,7 +45,7 @@ async function assetVersion(c: Context<AppBindings>): Promise<string> {
   return assetVersionCache;
 }
 
-async function ctx(c: Context<AppBindings>, p: Omit<PageCtx, 'env' | 'settings' | 'path' | 'assetV'> & { bannerTarget?: string }): Promise<PageCtx> {
+export async function ctx(c: Context<AppBindings>, p: Omit<PageCtx, 'env' | 'settings' | 'path' | 'assetV'> & { bannerTarget?: string }): Promise<PageCtx> {
   const [settings, b, assetV] = await Promise.all([getSettings(c.env), p.bannerTarget ? banners(c, p.bannerTarget) : Promise.resolve([]), assetVersion(c)]);
   return { ...p, env: c.env, settings, path: new URL(c.req.url).pathname, banners: b, assetV };
 }
@@ -83,12 +84,12 @@ async function portfolio(env: Env, featuredOnly = false): Promise<PortfolioView[
 /** Site-wide "why us" list from settings (one point per line: শিরোনাম | বিবরণ). */
 const whyUs = (s: SiteSettings) => titledLines(s.why_us || '');
 
-async function whatsapp(env: Env): Promise<string | null> {
+export async function whatsapp(env: Env): Promise<string | null> {
   const cs = await env.DB.prepare('SELECT whatsapp_enabled, whatsapp_number, whatsapp_message FROM chat_settings WHERE id = 1').first<{ whatsapp_enabled: number; whatsapp_number: string; whatsapp_message: string }>();
   return cs?.whatsapp_enabled ? whatsappLink(cs.whatsapp_number, cs.whatsapp_message) || null : null;
 }
 
-const notFound = async (c: Context<AppBindings>) => {
+export const notFound = async (c: Context<AppBindings>) => {
   const res = layout(await ctx(c, { title: 'পাওয়া যায়নি', pageType: 'notfound', noindex: true }), V.notFoundPage());
   return new Response(res.body, { status: 404, headers: res.headers });
 };
@@ -109,13 +110,14 @@ pages.get('/', async (c) => {
     env.DB.prepare(`SELECT question, answer FROM faqs WHERE is_active = 1 AND scope = 'sitewide' ORDER BY sort_order, id`).all<{ question: string; answer: string }>(),
     // Real numbers only (§21 honesty guardrail).
     env.DB.prepare(
-      `SELECT (SELECT COUNT(DISTINCT customer_phone) FROM orders WHERE payment_status = 'paid') AS clients,
-              (SELECT COUNT(*) FROM orders WHERE project_status = 'completed') AS completed,
+      `SELECT (SELECT COUNT(DISTINCT customer_phone) FROM orders WHERE payment_status = 'paid' AND kind = 'website') AS clients,
+              (SELECT COUNT(*) FROM orders WHERE project_status = 'completed' AND kind = 'website') AS completed,
+              (SELECT COUNT(DISTINCT student_id) FROM enrollments WHERE status = 'active') AS students,
               (SELECT COUNT(*) FROM reviews WHERE status = 'approved') AS reviewCount,
               (SELECT COALESCE(AVG(rating), 0) FROM reviews WHERE status = 'approved') AS reviewAvg`,
-    ).first<{ clients: number; completed: number; reviewCount: number; reviewAvg: number }>(),
+    ).first<{ clients: number; completed: number; students: number; reviewCount: number; reviewAvg: number }>(),
   ]);
-  const [settings, ds, works] = await Promise.all([getSettings(env), designs(env, { limit: 60 }), portfolio(env, true)]);
+  const [settings, ds, works, courseCats, courseList] = await Promise.all([getSettings(env), designs(env, { limit: 60 }), portfolio(env, true), loadCourseCategories(env), loadPublicCourses(env)]);
   const prices = cats.results.map((x) => x.min_price).filter((x): x is number => x !== null);
   // A varied teaser: one screen of each kind first (checkout, sidebar, footer…), then the rest.
   const seen = new Set<string>();
@@ -125,6 +127,7 @@ pages.get('/', async (c) => {
     V.homePage({
       settings, categories: cats.results, featured, packages: allPkgs, coupons, reviews, faqs: faqs.results, stats: stats || { clients: 0, completed: 0, reviewCount: 0, reviewAvg: 0 },
       designs: teaser, portfolio: works, whyUs: whyUs(settings), problems: titledLines(settings.home_problems || ''), minPrice: prices.length ? Math.min(...prices) : null, now,
+      courseCategories: courseCats, courses: courseList, students: stats?.students || 0, studentUrl: `${env.SITE_URL.replace(/\/$/, '')}/student`,
     }),
   );
 });
@@ -232,7 +235,7 @@ pages.get('/order/:no', async (c) => {
       pageType: 'order',
       noindex: true,
       // Browser Purchase pixel only for real confirmed payments; same event_id as the server-side CAPI Purchase.
-      purchaseEvent: paid ? { eventId: order.purchase_event_id, value: order.paid_amount ?? order.total, contentIds: items.map((i) => String(i.package_id)), orderNumber: order.order_number } : undefined,
+      purchaseEvent: paid && order.total > 0 ? { eventId: order.purchase_event_id, value: order.paid_amount ?? order.total, contentIds: items.map(contentIdOf), orderNumber: order.order_number } : undefined,
     }),
     V.orderPage(order, token, {
       statusLabel: PROJECT_STATUS_BN[order.project_status as ProjectStatus] || order.project_status,
@@ -293,4 +296,3 @@ pages.get('/lp/:slug', async (c) => {
 
 pages.get('/offline', async (c) => layout(await ctx(c, { title: 'অফলাইন', pageType: 'static', noindex: true }), raw('<section class="section"><div class="container narrow center"><h1>আপনি অফলাইনে আছেন</h1><p class="muted">ইন্টারনেট সংযোগ ফিরে এলে পেজটি আবার লোড করুন।</p></div></section>')));
 
-export { notFound };

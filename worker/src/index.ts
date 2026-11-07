@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { AppBindings, Env } from './env';
 import { pages, notFound } from './routes/pages';
 import { orders } from './routes/orders';
+import { courses } from './routes/courses';
 import { publicApi } from './routes/public-api';
 import { portal } from './routes/portal';
 import { admin } from './routes/admin';
@@ -80,6 +81,7 @@ app.route('/api/admin', admin);
 app.route('/', publicApi);
 app.route('/', orders);
 app.route('/', portal);
+app.route('/', courses);
 app.route('/', pages);
 
 /** Public media from R2 (screenshots, demo clips). Private client files are never served here. */
@@ -103,20 +105,24 @@ app.get('/media/*', async (c) => {
   return new Response(obj.body, { headers });
 });
 
-app.get('/robots.txt', (c) => c.text(`User-agent: *\nDisallow: /admin\nDisallow: /api/\nDisallow: /portal/\nDisallow: /order/\nDisallow: /invoice/\nSitemap: ${publicOrigin(c.env)}/sitemap.xml\n`));
+app.get('/robots.txt', (c) => c.text(`User-agent: *\nDisallow: /admin\nDisallow: /api/\nDisallow: /portal/\nDisallow: /order/\nDisallow: /invoice/\nDisallow: /student\nDisallow: /learn/\nSitemap: ${publicOrigin(c.env)}/sitemap.xml\n`));
 
 app.get('/sitemap.xml', async (c) => {
-  const [cats, pkgs, lps] = await c.env.DB.batch([
+  const [cats, pkgs, lps, ccats, crs] = await c.env.DB.batch([
     c.env.DB.prepare('SELECT slug, updated_at FROM categories WHERE is_active = 1'),
     c.env.DB.prepare("SELECT slug, updated_at FROM packages WHERE status IN ('active','coming_soon')"),
     c.env.DB.prepare("SELECT slug, updated_at FROM landing_pages WHERE status = 'published'"),
+    c.env.DB.prepare("SELECT cc.slug, cc.updated_at FROM course_categories cc WHERE cc.is_active = 1 AND EXISTS (SELECT 1 FROM courses co WHERE co.category_id = cc.id AND co.status IN ('published','coming_soon'))"),
+    c.env.DB.prepare("SELECT co.slug, co.updated_at FROM courses co JOIN course_categories cc ON cc.id = co.category_id WHERE co.status IN ('published','coming_soon') AND cc.is_active = 1"),
   ]);
   const u = (p: string, d?: string) => `<url><loc>${publicOrigin(c.env)}${p}</loc>${d ? `<lastmod>${d.slice(0, 10)}</lastmod>` : ''}</url>`;
   const list = [
-    u('/'), u('/packages'), u('/designs'), u('/portfolio'), u('/faq'), u('/about'), u('/contact'), u('/quiz'), u('/quote'), u('/refund-policy'), u('/terms'), u('/privacy'),
+    u('/'), u('/packages'), u('/courses'), u('/designs'), u('/portfolio'), u('/faq'), u('/about'), u('/contact'), u('/quiz'), u('/quote'), u('/refund-policy'), u('/terms'), u('/privacy'),
     ...(cats.results as { slug: string; updated_at: string }[]).map((r) => u(`/category/${r.slug}`, r.updated_at)),
     ...(pkgs.results as { slug: string; updated_at: string }[]).map((r) => u(`/package/${r.slug}`, r.updated_at)),
     ...(lps.results as { slug: string; updated_at: string }[]).map((r) => u(`/lp/${r.slug}`, r.updated_at)),
+    ...(ccats.results as { slug: string; updated_at: string }[]).map((r) => u(`/course-category/${r.slug}`, r.updated_at)),
+    ...(crs.results as { slug: string; updated_at: string }[]).map((r) => u(`/course/${r.slug}`, r.updated_at)),
   ];
   return c.body(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${list.join('')}</urlset>`, 200, { 'content-type': 'application/xml' });
 });

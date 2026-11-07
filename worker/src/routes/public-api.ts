@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono';
 import type { AppBindings } from '../env';
+import { loadPublicCourses } from '../lib/courses';
 import { fail, ok, readJson } from '../lib/http';
 import { getSettings } from '../lib/settings';
 import { loadPublicPackages, type CategoryRow } from '../lib/catalog';
@@ -193,11 +194,20 @@ export async function buildKnowledge(env: AppBindings['Bindings'], extra: string
       `${site}/package/${p.slug}`,
     ].filter(Boolean).join(' | ');
   }).join('\n');
+  const courses = await loadPublicCourses(env);
+  const cr = courses.map((c) => [
+    `- ${c.title} (${c.categoryName})`,
+    c.comingSoon ? 'শীঘ্রই আসছে' : c.price ? taka(c.price) : 'ফ্রি',
+    `${c.lessonCount}টি লেসন`,
+    cut(c.subtitle, 110),
+    `${site}/course/${c.slug}`,
+  ].filter(Boolean).join(' | ')).join('\n');
   return [
     `প্রতিষ্ঠান: ${s.brand_name}।`,
     `যোগাযোগ (ভিজিটর চাইলে সরাসরি দেবে — ডেভেলপার ও মালিকের সাথেও এই নম্বরেই কথা বলা যায়):\n${contacts}`,
     'কাজের ধাপ: প্যাকেজ বাছাই → অনলাইনে পেমেন্ট (বিকাশ/নগদ/রকেট/কার্ড/ব্যাংক) → তথ্য জমা → ডেভেলপমেন্ট → ক্লায়েন্ট রিভিউ → সংশোধন → ডেলিভারি। পেমেন্ট নিশ্চিত হওয়ার আগে কাজ শুরু হয় না। প্রতিটি প্যাকেজের বিস্তারিত ফিচার ও প্রশ্নোত্তর তার পেজে আছে।',
     `প্যাকেজসমূহ (নাম | দাম | ডেলিভারি | কার জন্য | ডেমো | বিস্তারিত):\n${pk}`,
+    cr ? `অনলাইন কোর্স (নাম | দাম | লেসন | কী শিখবেন | বিস্তারিত) — ভর্তি ফর্মে নাম, মোবাইল ও পাসওয়ার্ড দিয়ে পেমেন্ট; পেমেন্ট নিশ্চিত হলেই কোর্স শিক্ষার্থীর প্রোফাইলে চালু হয় (${env.SITE_URL.replace(/\/$/, '')}/student):\n${cr}` : '',
     faqs.length ? `প্রশ্নোত্তর:\n${faqs.map((f) => `প্র: ${f.question}\nউ: ${cut(f.answer, 260)}`).join('\n')}` : '',
     extra ? `অতিরিক্ত তথ্য:\n${cut(extra, 2000)}` : '',
   ].filter(Boolean).join('\n\n').slice(0, 12000);

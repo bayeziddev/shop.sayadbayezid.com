@@ -10,6 +10,7 @@ import { clampStr, clientIp, nowIso, parseJson, safeEqual, toInt, randomToken, t
 import { sendMetaEvent } from '../../lib/meta-capi';
 import { getSettings, saveSettings, SETTINGS_DEFAULTS, type SiteSettings } from '../../lib/settings';
 import { registerResources } from './resources';
+import { registerCourseAdmin } from './courses';
 import { listRows, toCsv, csvResponse, type ResourceDef } from './crud';
 import { changeProjectStatus, confirmPayment, getOrder, getOrderItems, issueReferralCoupon } from '../../lib/orders';
 import { portalToken } from '../../lib/portal-token';
@@ -91,6 +92,7 @@ admin.post('/auth/password', async (c) => {
 });
 
 registerResources(admin);
+registerCourseAdmin(admin);
 
 /* ---------------- Dashboard ---------------- */
 function health(c: { env: AppBindings['Bindings'] }, s: SiteSettings) {
@@ -160,7 +162,7 @@ admin.get('/dashboard', async (c) => {
 const ordersList: ResourceDef = {
   table: 'orders', entity: 'order', writePerm: 'orders.write', fields: [],
   searchCols: ['order_number', 'invoice_number', 'customer_name', 'customer_phone', 'customer_email', 'business_name'],
-  filterCols: ['project_status', 'payment_status', 'payment_method', 'utm_campaign'], orderBy: 'id DESC',
+  filterCols: ['project_status', 'payment_status', 'payment_method', 'utm_campaign', 'kind'], orderBy: 'id DESC',
 };
 
 admin.get('/orders', async (c) => ok(c, await listRows(c, ordersList)));
@@ -193,11 +195,22 @@ admin.get('/orders/:id', async (c) => {
     items: items.map((i) => ({ ...i, addons: parseJson(i.addons, []) })),
     history: history.results, messages: messages.results, files: files.results,
     requirementsSubmitted: req,
-    nextStatuses: o.payment_status === 'paid' ? TRANSITIONS[o.project_status] : ['cancelled'],
+    nextStatuses: o.kind === 'course' ? (o.project_status === 'cancelled' ? [] : ['cancelled']) : o.payment_status === 'paid' ? TRANSITIONS[o.project_status] : ['cancelled'],
+    course: o.kind === 'course' ? await courseOrderInfo(c.env, id, o.student_id) : null,
     portalUrl: `/portal/${encodeURIComponent(o.order_number)}?t=${token}`,
     invoiceUrl: `/invoice/${encodeURIComponent(o.order_number)}?t=${token}`,
   });
 });
+
+/** For a course order: the student account and whether the course is open in their profile. */
+async function courseOrderInfo(env: AppBindings['Bindings'], orderId: number, studentId: number | null) {
+  if (!studentId) return null;
+  const [st, en] = await env.DB.batch([
+    env.DB.prepare('SELECT id, name, phone, email, is_blocked, last_login_at FROM students WHERE id = ?').bind(studentId),
+    env.DB.prepare('SELECT e.id, e.status, e.source, e.created_at, c.title, c.slug FROM enrollments e JOIN courses c ON c.id = e.course_id WHERE e.order_id = ? ORDER BY e.id').bind(orderId),
+  ]);
+  return { student: st.results[0] || null, enrollments: en.results };
+}
 
 /** Decrypt client requirements — restricted & audit-logged (treated like payment data). */
 admin.get('/orders/:id/requirements', requirePerm('requirements.read'), async (c) => {
@@ -217,6 +230,7 @@ admin.post('/orders/:id/status', requirePerm('orders.write'), async (c) => {
   const to = b.status as ProjectStatus;
   if (!PROJECT_STATUSES.includes(to)) fail(422, 'অবস্থা সঠিক নয়');
   if (to === 'confirmed') fail(422, '“নিশ্চিত” অবস্থা শুধু পেমেন্ট নিশ্চিত হলেই আসে');
+  if (o.kind === 'course' && to !== 'cancelled') fail(422, 'কোর্স অর্ডারে প্রজেক্টের ধাপ নেই — পেমেন্ট নিশ্চিত হলেই কোর্স চালু হয়');
   if (to === 'cancelled') assertPerm(c, 'orders.payment');
   if (to === 'client_review' && !o.preview_url) fail(422, 'ক্লায়েন্ট রিভিউর আগে প্রিভিউ লিংক যোগ করুন');
   try {
@@ -228,7 +242,10 @@ admin.post('/orders/:id/status', requirePerm('orders.write'), async (c) => {
     if (m === 'concurrent_update') fail(409, 'অন্য কেউ এইমাত্র অবস্থা বদলেছেন — পেজ রিফ্রেশ করুন');
     throw e;
   }
-  if (to === 'completed') await issueReferralCoupon(c.env, o);
+  if (to === 'completed' && o.kind !== 'course') await issueReferralCoupon(c.env, o);
+  if (to === 'cancelled' && o.kind === 'course') {
+    await c.env.DB.prepare("UPDATE enrollments SET status = 'revoked', note = 'অর্ডার বাতিল', updated_at = ? WHERE order_id = ? AND status = 'active'").bind(nowIso(), id).run();
+  }
   await audit(c.env, c.get('admin').id, 'status', 'order', id, { to, note: b.note }, clientIp(c.req.raw));
   return ok(c, { status: to });
 });
@@ -521,11 +538,30 @@ admin.put('/settings', requirePerm('settings.write'), async (c) => {
   return ok(c, { saved: true });
 });
 
-/* ---------------- Media uploads (public assets: screenshots, demo clips, banners) ---------------- */
+/* ---------------- Media uploads (public assets: screenshots, demo clips, banners; private course files) ---------------- */
+const PRIVATE_EXT: Record<string, string> = {
+  pdf: 'application/pdf', zip: 'application/zip', txt: 'text/plain; charset=utf-8', csv: 'text/csv; charset=utf-8',
+  doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp',
+  mp4: 'video/mp4', webm: 'video/webm', m4v: 'video/mp4', mp3: 'audio/mpeg', m4a: 'audio/mp4',
+};
 admin.post('/uploads', requirePerm('catalog.write'), async (c) => {
   const form = await c.req.parseBody();
   const file = form.file;
   if (!(file instanceof File)) fail(422, 'ফাইল বেছে নিন');
+  if (form.private === '1') {
+    // Course lesson material: kept under private/ — never served by /media, only through the student access check.
+    const ext = (file.name.match(/\.([a-z0-9]{1,5})$/i)?.[1] || '').toLowerCase();
+    if (!PRIVATE_EXT[ext]) fail(422, 'এই ধরনের ফাইল নেওয়া যায় না — পিডিএফ, জিপ, ডক/এক্সেল/পাওয়ারপয়েন্ট, ছবি, এমপি৪/ওয়েবএম ভিডিও বা এমপি৩ দিন');
+    if (file.size > 95 * 1024 * 1024) fail(422, 'ফাইল সর্বোচ্চ ৯৫ মেগাবাইট — বড় ভিডিও ইউটিউবে আনলিস্টেড করে লিংক দিন');
+    const safeName = file.name.replace(/\.[^.]*$/, '').replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'file';
+    const key = `private/courses/${new Date().toISOString().slice(0, 7)}/${randomToken(8)}-${safeName}.${ext}`;
+    await requireMedia(c.env).put(key, file.stream(), { httpMetadata: { contentType: PRIVATE_EXT[ext] } });
+    await audit(c.env, c.get('admin').id, 'upload', 'media', key, { size: file.size, type: PRIVATE_EXT[ext], private: true }, clientIp(c.req.raw));
+    return ok(c, { key, url: '', private: true, name: file.name, size: file.size }, 201);
+  }
   if (!/^(image\/(png|jpeg|webp|gif|avif|svg\+xml)|video\/(mp4|webm))$/.test(file.type)) fail(422, 'শুধু ছবি (পিএনজি/জেপিজি/ওয়েবপি) বা ভিডিও (এমপি৪/ওয়েবএম) আপলোড করা যাবে');
   if (file.size > 50 * 1024 * 1024) fail(422, 'ফাইল সর্বোচ্চ ৫০ মেগাবাইট');
   const ext = file.type.split('/')[1].replace('svg+xml', 'svg').replace('jpeg', 'jpg');
@@ -552,7 +588,7 @@ admin.get('/reports', async (c) => {
                   (SELECT COUNT(*) FROM orders o WHERE o.is_internal = 0 AND o.landing_page_id = lp.id AND o.payment_status='paid' AND o.created_at >= ?1 AND o.created_at < ?2) AS paid,
                   (SELECT COALESCE(SUM(paid_amount),0) FROM orders o WHERE o.is_internal = 0 AND o.landing_page_id = lp.id AND o.payment_status='paid' AND o.created_at >= ?1 AND o.created_at < ?2) AS revenue
                 FROM landing_pages lp ORDER BY revenue DESC, leads DESC`).bind(from, to),
-    db.prepare(`SELECT i.package_name, COUNT(*) AS sold, SUM(i.total) AS revenue FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.is_internal = 0 AND o.payment_status='paid' AND o.created_at >= ? AND o.created_at < ? GROUP BY i.package_id ORDER BY revenue DESC`).bind(from, to),
+    db.prepare(`SELECT i.package_name, COUNT(*) AS sold, SUM(i.total) AS revenue FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.is_internal = 0 AND o.payment_status='paid' AND o.created_at >= ? AND o.created_at < ? GROUP BY i.package_id, i.course_id ORDER BY revenue DESC`).bind(from, to),
     db.prepare(`SELECT payment_method, COUNT(*) AS orders, SUM(payment_status='paid') AS paid FROM orders WHERE is_internal = 0 AND created_at >= ? AND created_at < ? GROUP BY payment_method`).bind(from, to),
     db.prepare(`SELECT source, COUNT(*) AS leads, SUM(status='won') AS won FROM leads WHERE is_internal = 0 AND created_at >= ? AND created_at < ? GROUP BY source`).bind(from, to),
     db.prepare(`SELECT project_status, COUNT(*) AS n FROM orders WHERE is_internal = 0 AND created_at >= ? AND created_at < ? GROUP BY project_status`).bind(from, to),
@@ -616,12 +652,14 @@ admin.get('/activity', requirePerm('audit.read'), async (c) => {
   return ok(c, r);
 });
 admin.get('/lookups', async (c) => {
-  const [cats, pkgs, staff] = await c.env.DB.batch([
+  const [cats, pkgs, staff, ccats, crs] = await c.env.DB.batch([
     c.env.DB.prepare('SELECT id, name, slug FROM categories ORDER BY sort_order, id'),
     c.env.DB.prepare('SELECT id, name, slug, category_id FROM packages ORDER BY category_id, sort_order, id'),
     c.env.DB.prepare('SELECT id, name, role FROM admins WHERE is_active = 1 ORDER BY name'),
+    c.env.DB.prepare('SELECT id, name, slug, icon FROM course_categories ORDER BY sort_order, id'),
+    c.env.DB.prepare('SELECT id, title AS name, slug, category_id, price, status FROM courses ORDER BY category_id, sort_order, id'),
   ]);
-  return ok(c, { categories: cats.results, packages: pkgs.results, staff: staff.results, statuses: PROJECT_STATUSES.map((s) => ({ key: s, label: PROJECT_STATUS_BN[s] })), transitions: TRANSITIONS });
+  return ok(c, { categories: cats.results, packages: pkgs.results, staff: staff.results, courseCategories: ccats.results, courses: crs.results, statuses: PROJECT_STATUSES.map((s) => ({ key: s, label: PROJECT_STATUS_BN[s] })), transitions: TRANSITIONS });
 });
 admin.get('/notification-log', async (c) => {
   const r = await c.env.DB.prepare('SELECT * FROM notification_log ORDER BY id DESC LIMIT 100').all();

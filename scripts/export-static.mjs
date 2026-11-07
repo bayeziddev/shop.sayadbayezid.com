@@ -19,7 +19,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /** Pages that only make sense on the Worker (private links, server work) are never copied. */
-const BACKEND_ONLY = /^\/(admin|api|order|portal|invoice|payments|media)(\/|$)/;
+const BACKEND_ONLY = /^\/(admin|api|order|portal|invoice|payments|media|student|learn)(\/|$)/;
 
 /** The admin app and the Worker's _headers file stay on the Worker only. */
 export const keepAsset = (src) => !/(^|[\\/])dist[\\/](admin|_headers)([\\/]|$)/.test(src);
@@ -49,7 +49,9 @@ export function fileFor(path) {
 /** Paths to copy: everything in the Worker's sitemap plus the pages that work fully through the API. */
 export function pathsFromSitemap(xml) {
   const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => new URL(m[1]).pathname);
-  const all = new Set(['/', ...locs, '/checkout', '/account']);
+  // Each course's enrol page and ad landing page are copied too (kept out of the sitemap on purpose).
+  const extra = locs.filter((p) => /^\/course\/[\w-]+$/.test(p)).flatMap((p) => [p.replace(/^\/course\//, '/enroll/'), `/lp${p}`]);
+  const all = new Set(['/', ...locs, ...extra, '/checkout', '/account']);
   return [...all].filter((p) => !BACKEND_ONLY.test(p));
 }
 
