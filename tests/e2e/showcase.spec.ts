@@ -115,7 +115,7 @@ test('pages have no horizontal overflow, down to small 360px phones', async ({ p
   const widths = info.project.name === 'mobile' ? [page.viewportSize()!.width, 360] : [page.viewportSize()!.width];
   for (const width of widths) {
     await page.setViewportSize({ width, height: 800 });
-    for (const path of ['/', '/packages', '/designs', '/portfolio', '/package/sidra-jewellery', '/contact', '/checkout']) {
+    for (const path of ['/', '/packages', '/category/gadgets', '/designs', '/portfolio', '/package/sidra-jewellery', '/contact', '/checkout']) {
       await page.goto(path);
       // Compare with the intended width: a too-wide element makes mobile Chrome zoom out and widen innerWidth too.
       const overflow = await page.evaluate((w) => document.documentElement.scrollWidth - w, width);

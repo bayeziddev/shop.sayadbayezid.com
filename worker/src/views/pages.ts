@@ -158,7 +158,7 @@ export function packagesPage(categories: CategoryRow[], pkgs: PublicPackage[], c
 </section>`;
 }
 
-export function categoryPage(cat: CategoryRow, pkgs: PublicPackage[], coupons: CouponRow[], now: number, catOffer: ReturnType<typeof liveOffer>): Raw {
+export function categoryPage(cat: CategoryRow, pkgs: PublicPackage[], coupons: CouponRow[], now: number, catOffer: ReturnType<typeof liveOffer>, allCats: CategoryRow[] = [], allPkgs: PublicPackage[] = []): Raw {
   return html`
 <section class="page-hero mesh">
   <div class="container">
@@ -170,7 +170,7 @@ export function categoryPage(cat: CategoryRow, pkgs: PublicPackage[], coupons: C
 </section>
 <section class="section">
   <div class="container">
-    ${pkgs.length ? html`<div class="pkg-grid">${pkgs.map((p) => packageCard(p, coupons, now))}</div>` : html`<div class="empty card"><p>এই ক্যাটাগরিতে এখনো কোনো প্যাকেজ যোগ করা হয়নি।</p><a class="btn btn-primary" href="/quote">ফ্রি কোটেশন নিন →</a></div>`}
+    ${pkgs.length ? (allCats.length ? catalogBrowser(allCats, allPkgs.length ? allPkgs : pkgs, coupons, now, mediaUrl, { only: cat.slug }) : html`<div class="pkg-grid">${pkgs.map((p) => packageCard(p, coupons, now))}</div>`) : html`<div class="empty card"><p>এই ক্যাটাগরিতে এখনো কোনো প্যাকেজ যোগ করা হয়নি।</p><a class="btn btn-primary" href="/quote">ফ্রি কোটেশন নিন →</a></div>`}
     <div class="card quote-nudge"><div><h3>আপনার চাহিদা একটু আলাদা?</h3><p class="muted">প্যাকেজের বাইরে কিছু লাগলে জানান — আলাদা মূল্য জানিয়ে দেব।</p></div><a class="btn btn-ghost" href="/quote">কোটেশন চাই →</a></div>
   </div>
 </section>`;

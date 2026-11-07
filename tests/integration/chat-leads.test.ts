@@ -1,6 +1,7 @@
 import { SELF, env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import loginFixture from '../fixtures/admin-login.json';
+import { buildKnowledge } from '../../worker/src/routes/public-api';
 
 const BASE = 'http://localhost:8787';
 const post = async (path: string, body: unknown, headers: Record<string, string> = {}) => {
@@ -72,5 +73,16 @@ describe('admin AI tools explain what is wrong', () => {
     const sug = await post('/api/admin/ai/suggest', { name: 'পরীক্ষা প্যাকেজ', features: ['এক'] }, h);
     expect(sug.status).toBe(502);
     expect(JSON.stringify(sug.body)).toContain('এপিআই কী যোগ করা হয়নি');
+  });
+});
+
+describe('what the chat assistant is sent', () => {
+  it('stays short (it is sent with every message) yet has every package, its link and the contact block', async () => {
+    const k = await buildKnowledge(env as any, '', '- হোয়াটসঅ্যাপ ও ফোন: 01519601517');
+    expect(k.length).toBeLessThanOrEqual(12000);
+    expect(k).toContain('01519601517');
+    const all = (await (await SELF.fetch(BASE + '/api/packages')).json() as any).data;
+    for (const p of all) expect(k, p.slug).toContain(`/package/${p.slug}`);
+    expect(k).not.toContain('অ্যাডমিন প্যানেল থেকে আমি নিজে কী কী করতে পারব?'); // package FAQs stay on package pages
   });
 });

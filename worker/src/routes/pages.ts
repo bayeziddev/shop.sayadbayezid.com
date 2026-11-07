@@ -30,9 +30,23 @@ async function banners(c: Context<AppBindings>, target: string): Promise<BannerR
   ).results;
 }
 
-async function ctx(c: Context<AppBindings>, p: Omit<PageCtx, 'env' | 'settings' | 'path'> & { bannerTarget?: string }): Promise<PageCtx> {
-  const [settings, b] = await Promise.all([getSettings(c.env), p.bannerTarget ? banners(c, p.bannerTarget) : Promise.resolve([])]);
-  return { ...p, env: c.env, settings, path: new URL(c.req.url).pathname, banners: b };
+/** The styles/scripts version written by the build (dist/assets/version.txt); read once per isolate, i.e. once per deploy. */
+let assetVersionCache: string | null = null;
+async function assetVersion(c: Context<AppBindings>): Promise<string> {
+  if (assetVersionCache) return assetVersionCache;
+  try {
+    const r = await c.env.ASSETS.fetch(new Request(new URL('/assets/version.txt', c.req.url)));
+    const v = r.ok ? (await r.text()).trim() : '';
+    assetVersionCache = /^[a-f0-9]{6,40}$/.test(v) ? v : 'dev';
+  } catch {
+    assetVersionCache = 'dev';
+  }
+  return assetVersionCache;
+}
+
+async function ctx(c: Context<AppBindings>, p: Omit<PageCtx, 'env' | 'settings' | 'path' | 'assetV'> & { bannerTarget?: string }): Promise<PageCtx> {
+  const [settings, b, assetV] = await Promise.all([getSettings(c.env), p.bannerTarget ? banners(c, p.bannerTarget) : Promise.resolve([]), assetVersion(c)]);
+  return { ...p, env: c.env, settings, path: new URL(c.req.url).pathname, banners: b, assetV };
 }
 
 async function approvedReviews(c: Context<AppBindings>, packageId?: number, limit = 6): Promise<ReviewView[]> {
@@ -119,13 +133,15 @@ pages.get('/category/:slug', async (c) => {
   const cat = await c.env.DB.prepare('SELECT * FROM categories WHERE slug = ? AND is_active = 1').bind(c.req.param('slug')).first<CategoryRow>();
   if (!cat) return notFound(c);
   const now = Date.now();
-  const [pkgs, coupons, offers] = await Promise.all([
-    loadPublicPackages(c.env, { categoryId: cat.id }),
+  const [allPkgs, coupons, offers, cats] = await Promise.all([
+    loadPublicPackages(c.env),
     visibleCoupons(c.env),
     c.env.DB.prepare(`SELECT * FROM offers WHERE scope = 'category' AND scope_id = ? AND is_active = 1`).bind(cat.id).all<OfferRow>(),
+    c.env.DB.prepare('SELECT * FROM categories WHERE is_active = 1 ORDER BY sort_order, id').all<CategoryRow>(),
   ]);
+  const pkgs = allPkgs.filter((p) => p.categoryId === cat.id);
   const catOffer = offers.results.map(offerFromRow).filter((o) => isOfferLive(o, now))[0];
-  return layout(await ctx(c, { title: `${cat.name} ওয়েবসাইট`, description: cat.description, pageType: 'category', bannerTarget: 'category' }), V.categoryPage(cat, pkgs, coupons, now, catOffer));
+  return layout(await ctx(c, { title: `${cat.name} ওয়েবসাইট`, description: cat.description, pageType: 'category', bannerTarget: 'category' }), V.categoryPage(cat, pkgs, coupons, now, catOffer, cats.results, allPkgs));
 });
 
 pages.get('/package/:slug', async (c) => {
