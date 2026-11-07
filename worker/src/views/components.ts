@@ -138,6 +138,35 @@ export function pointCards(items: { title: string; text: string }[], icon = '✓
   return html`<div class="point-grid">${items.map((it, i) => html`<div class="card point"><span class="point-ico" aria-hidden="true">${icon === '#' ? bnDigits(i + 1) : icon}</span><div><h3>${it.title}</h3>${it.text ? html`<p class="muted">${it.text}</p>` : ''}</div></div>`)}</div>`;
 }
 
+/** "এখন যা হচ্ছে → এই সাইটে যা হবে": each client problem next to how the site removes it. */
+export function problemGrid(items: { title: string; text: string }[]): Raw {
+  return html`<div class="pain-grid">${items.map((it) => html`<div class="card pain-card">
+    <p class="pain"><span class="pain-ico" aria-hidden="true">✕</span><span><span class="sr-only">সমস্যা: </span>${it.title}</span></p>
+    ${it.text ? html`<p class="fix"><span class="fix-ico" aria-hidden="true">✓</span><span><span class="sr-only">সমাধান: </span>${it.text}</span></p>` : ''}
+  </div>`)}</div>`;
+}
+
+/** Orders needed to earn back the price, and roughly how many days at a given daily rate. */
+export function roiNumbers(price: number, profitPerOrder: number, ordersPerDay: number): { orders: number; days: number } | null {
+  if (!(price > 0) || !(profitPerOrder > 0)) return null;
+  const orders = Math.ceil(price / profitPerOrder);
+  return { orders, days: ordersPerDay > 0 ? Math.ceil(orders / ordersPerDay) : 0 };
+}
+
+/** Cost-recovery calculator. Works without JavaScript (server-rendered result); app.js recalculates as the visitor types. */
+export function roiCalculator(price: number, roi: { profit: number; orders: number }): Raw {
+  const r = roiNumbers(price, roi.profit, roi.orders);
+  return html`<form class="card roi" data-roi data-price="${price}">
+    <h3>খরচ কতদিনে উঠে আসবে? — নিজের সংখ্যা বসিয়ে দেখুন</h3>
+    <div class="roi-inputs">
+      <label>প্রতি অর্ডারে আপনার লাভ (৳)<input type="number" inputmode="numeric" min="1" max="10000000" step="1" name="profit" value="${roi.profit}" data-roi-profit></label>
+      <label>এই সাইট থেকে দিনে কয়টি অর্ডার<input type="number" inputmode="numeric" min="0" max="100000" step="1" name="orders" value="${roi.orders}" data-roi-orders></label>
+    </div>
+    <p class="roi-out" data-roi-out aria-live="polite">${r ? html`${taka(price)} উঠে আসবে <strong>${bnDigits(r.orders)}টি অর্ডারে</strong>${r.days ? html` — দিনে ${bnDigits(roi.orders)}টি হলে প্রায় <strong>${bnDigits(r.days)} দিনে</strong>` : ''}। এরপর প্রতিটি অর্ডারের লাভ পুরোটাই আপনার।` : ''}</p>
+    <p class="small muted">এটি শুধু আপনার দেওয়া সংখ্যার সাধারণ হিসাব, বিক্রির নিশ্চয়তা নয় — বিক্রি নির্ভর করে আপনার পণ্য, দাম আর মার্কেটিংয়ের উপর। শুরুর সংখ্যাগুলো উদাহরণ মাত্র। সাইটের দাম একবারই; বিক্রি থেকে কোনো কমিশন নেওয়া হয় না।</p>
+  </form>`;
+}
+
 export interface DesignView { id: number; kind: string; title: string; image: string; demo_url: string; note: string; package_slug: string | null; package_name: string | null; package_id: number | null }
 export const DESIGN_KINDS: [string, string][] = [
   ['hero', 'হোমপেজ / হিরো'], ['header', 'হেডার ও মেনু'], ['product', 'পণ্যের পেজ'], ['checkout', 'চেকআউট'], ['footer', 'ফুটার'],

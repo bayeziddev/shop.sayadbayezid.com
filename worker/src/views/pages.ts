@@ -4,7 +4,7 @@ import { mediaUrl } from '../lib/catalog';
 import { taka, bnDigits, bnDate } from '../lib/util';
 import {
   browserFrame, phoneFrame, packageCard, priceBlock, liveOffer, countdown, offerBadge, couponChip, couponsFor, reviewCard, faqList, leadForm, stars,
-  demoLink, videoPlayer, pointCards, designCard, portfolioCard, shotCaption, isTallShot, tierLabel, DESIGN_KINDS,
+  demoLink, videoPlayer, pointCards, designCard, portfolioCard, shotCaption, isTallShot, tierLabel, DESIGN_KINDS, problemGrid, roiCalculator,
   type ReviewView, type DesignView, type PortfolioView,
 } from './components';
 import type { SiteSettings } from '../lib/settings';
@@ -20,6 +20,8 @@ export interface HomeData {
   designs: DesignView[];
   portfolio: PortfolioView[];
   whyUs: { title: string; text: string }[];
+  /** "সমস্যা | সমাধান" pairs from settings.home_problems. */
+  problems: { title: string; text: string }[];
   minPrice: number | null;
   now: number;
 }
@@ -37,13 +39,13 @@ export function homePage(d: HomeData): Raw {
   <div class="container hero-grid">
     <div class="hero-copy reveal" data-edit="settings">
       <span class="eyebrow">রেডি ওয়েবসাইট · লাইভ ডেমো${d.minPrice ? html` · ${taka(d.minPrice)} থেকে` : ''}</span>
-      <h1>আগে <span class="grad-text">লাইভ ডেমো</span> দেখুন,<br>তারপর আপনার সাইট অর্ডার করুন</h1>
+      <h1>ইনবক্স নয়, <span class="grad-text">নিজের অনলাইন দোকানে</span> অর্ডার নিন — ২৪ ঘণ্টা, গুছিয়ে</h1>
       <p class="lead">${d.settings.brand_tagline}</p>
       <div class="hero-cta">
         <a class="btn btn-primary btn-lg" href="/packages">সব রেডি ওয়েবসাইট দেখুন <span aria-hidden="true">→</span></a>
         <a class="btn btn-ghost btn-lg" href="/designs">ডিজাইন গ্যালারি দেখুন</a>
       </div>
-      <ul class="hero-points"><li>✓ দাম আগেই স্পষ্ট</li><li>✓ পেমেন্টের পরেই কাজ শুরু</li><li>✓ অনুমোদনের আগে রিভিউ</li></ul>
+      <ul class="hero-points"><li>✓ কেনার আগে লাইভ ডেমোতে নিজে চালিয়ে দেখুন</li><li>✓ এক দাম — বিক্রি থেকে কোনো কমিশন নেই</li><li>✓ আপনার অনুমোদনের পরেই লাইভ</li></ul>
       ${d.settings.lead_box_enabled ? html`<button type="button" class="link-cta hero-advice" data-leadbox-open data-leadbox-from="hero">কোনটা নেবেন বুঝতে পারছেন না? ২ মিনিটে ফ্রি পরামর্শ নিন →</button>` : ''}
     </div>
     ${showcase.length ? html`<div class="showcase reveal" data-rotator aria-roledescription="স্লাইডশো" aria-label="আমাদের রেডি ওয়েবসাইটের ডেমো">
@@ -55,6 +57,14 @@ export function homePage(d: HomeData): Raw {
     </div>` : ''}
   </div>
 </section>
+
+${d.problems.length ? html`<section class="section pains" id="problems">
+  <div class="container">
+    <header class="section-head" data-edit="settings"><h2>অনলাইনে বিক্রি করতে গিয়ে এই ঝামেলাগুলো কি হচ্ছে?</h2><p class="muted">প্রতিটি ঝামেলার পাশে লেখা — নিজের ওয়েবসাইট কীভাবে সেটা মেটায়</p></header>
+    ${problemGrid(d.problems)}
+    <p class="center pains-cta"><span class="muted">কোন প্যাকেজে কোন সুবিধা আছে, প্রতিটি প্যাকেজ পেজে বিস্তারিত লেখা।</span><br><a class="btn btn-primary btn-lg" href="#categories">আপনার ব্যবসার ধরন বেছে নিন <span aria-hidden="true">↓</span></a></p>
+  </div>
+</section>` : ''}
 
 <section class="section" id="categories">
   <div class="container">
@@ -90,7 +100,7 @@ ${d.designs.length ? html`<section class="section designs-teaser">
   <div class="container">
     <header class="section-head"><h2>কীভাবে কাজ করে</h2></header>
     <ol class="steps">
-      <li class="card"><span class="step-n">১</span><h3>ডেমো দেখে প্যাকেজ বাছাই করুন</h3><p class="muted">লাইভ ডেমো ঘুরে দেখুন, প্রয়োজনীয় অ্যাড-অন যোগ করুন — দাম সাথে সাথে দেখতে পাবেন।</p></li>
+      <li class="card"><span class="step-n">১</span><h3>ডেমো দেখে প্যাকেজ বাছাই করুন</h3><p class="muted">লাইভ ডেমো নিজে চালিয়ে দেখুন আপনার ক্রেতা কী দেখবেন আর আপনি অ্যাডমিনে কী পাবেন — দাম আগেই লেখা।</p></li>
       <li class="card"><span class="step-n">২</span><h3>পেমেন্ট করুন, আমরা বানাই</h3><p class="muted">পেমেন্টের পর আপনার ব্যবসার তথ্য দিন। প্রতিটি ধাপের আপডেট আপনার অর্ডার পেজে পাবেন।</p></li>
       <li class="card"><span class="step-n">৩</span><h3>অনুমোদন দিন, লাইভ হোক</h3><p class="muted">প্রিভিউ দেখে মতামত দিন, সংশোধন শেষে অনুমোদন দিলেই আপনার সাইট লাইভ।</p></li>
     </ol>
@@ -203,7 +213,8 @@ export function packagePage(p: PublicPackage, d: PackagePageData): Raw {
   const whyUs = p.whyUs.length ? p.whyUs : d.whyUs;
   const demos = [...(p.demoUrl ? [{ label: 'লাইভ ডেমো দেখুন', url: p.demoUrl }] : []), ...p.demoLinks.filter((l) => l.url !== p.demoUrl)];
   const nav: [string, string, boolean][] = [
-    ['solution', 'সমাধান', !!p.solution], ['benefits', 'আপনার লাভ', p.benefits.length > 0], ['tour', 'ফিচার ট্যুর', p.tour.length > 0],
+    ['solution', 'সমস্যা ও সমাধান', !!p.solution || p.problems.length > 0], ['how', 'কীভাবে কাজ করে', p.how.length > 0],
+    ['benefits', 'আপনার লাভ', p.benefits.length > 0], ['profit', 'লাভের হিসাব', p.profit.length > 0 || p.roi.profit > 0], ['tour', 'ফিচার ট্যুর', p.tour.length > 0],
     ['features', 'সব ফিচার', true], ['video', 'ভিডিও', !!p.video], ['screens', 'স্ক্রিনশট', !p.tour.length && shots.length > 1],
     ['why', 'কেন আমরা', whyUs.length > 0], ['reviews', 'রিভিউ', true], ['faq', 'প্রশ্নোত্তর', d.faqs.length > 0],
   ];
@@ -265,9 +276,25 @@ export function packagePage(p: PublicPackage, d: PackagePageData): Raw {
 
 <nav class="section-tabs" aria-label="এই পেজে"><div class="container">${nav.filter(([, , on]) => on).map(([id, l]) => html`<a href="#${id}">${l}</a>`)}</div></nav>
 
-${p.solution ? html`<section class="section-sm" id="solution"><div class="container"><div class="card solution-card"><span class="eyebrow">আপনার সমস্যার সমাধান</span><h2>এই সাইট আপনার জন্য কী করবে</h2>${paragraphs(p.solution)}</div></div></section>` : ''}
+${p.solution || p.problems.length ? html`<section class="section-sm" id="solution"><div class="container">
+  ${p.solution ? html`<div class="card solution-card"><span class="eyebrow">সমস্যা ও সমাধান</span><h2>এই সাইট আপনার কোন ঝামেলা মেটাবে</h2>${paragraphs(p.solution)}</div>` : ''}
+  ${p.problems.length ? html`<h3 class="pains-title">এখন যা হচ্ছে → এই সাইটে যা হবে</h3>${problemGrid(p.problems)}` : ''}
+</div></section>` : ''}
+
+${p.how.length ? html`<section class="section-sm" id="how"><div class="container">
+  <h2>কীভাবে কাজ করবে — ক্রেতা আসা থেকে ডেলিভারি</h2><p class="muted">সাইট চালু হলে আপনার একটি সাধারণ দিন এভাবে চলবে</p>
+  <ol class="flow">${p.how.map((s, i) => html`<li class="flow-step"><span class="flow-n" aria-hidden="true">${bnDigits(i + 1)}</span><div><h3>${s.title}</h3>${s.text ? html`<p class="muted">${s.text}</p>` : ''}</div></li>`)}</ol>
+</div></section>` : ''}
 
 ${p.benefits.length ? html`<section class="section-sm" id="benefits"><div class="container"><h2>আপনার ব্যবসার লাভ</h2>${pointCards(p.benefits, '#')}</div></section>` : ''}
+
+${p.profit.length || p.roi.profit > 0 ? html`<section class="section-sm" id="profit"><div class="container">
+  <h2>লাভের হিসাব — টাকা কোথা থেকে আসে, কোথায় বাঁচে</h2>
+  <div class="profit-split">
+    ${p.profit.length ? html`<div class="profit-list">${pointCards(p.profit, '৳')}</div>` : ''}
+    ${p.roi.profit > 0 ? roiCalculator(p.basePrice, p.roi) : ''}
+  </div>
+</div></section>` : ''}
 
 ${p.tour.length ? html`<section class="section-sm" id="tour"><div class="container">
   <h2>ফিচার ট্যুর — স্ক্রিনশটে দেখুন</h2><p class="muted">প্রতিটি স্ক্রিনে কী আছে, ছবির পাশে লেখা — ছবিতে চাপ দিলে বড় হবে</p>

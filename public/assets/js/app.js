@@ -1,4 +1,4 @@
-import { $, $$, bn, toast, api, captureAttribution, attribution, updateCartCount, formJson, showFieldError, setMsg } from './lib.js';
+import { $, $$, bn, taka, toast, api, captureAttribution, attribution, updateCartCount, formJson, showFieldError, setMsg } from './lib.js';
 import './leadbox.js';
 
 captureAttribution();
@@ -295,3 +295,27 @@ if (tabs.length && 'IntersectionObserver' in window) {
   }), { rootMargin: '-40% 0px -55% 0px' });
   tabs.forEach((a) => { const s = document.querySelector(a.getAttribute('href')); if (s) io2.observe(s); });
 }
+
+/* Cost-recovery calculator on package pages: price ÷ profit per order = orders needed; ÷ orders per day = days. */
+$$('[data-roi]').forEach((form) => {
+  const price = Number(form.dataset.price) || 0;
+  const out = $('[data-roi-out]', form);
+  const num = (el) => {
+    const n = Math.floor(Number(String(el.value).replace(/[০-৯]/g, (d) => '০১২৩৪৫৬৭৮৯'.indexOf(d))));
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  const strong = (t) => { const s = document.createElement('strong'); s.textContent = t; return s; };
+  const render = () => {
+    const profit = num($('[data-roi-profit]', form));
+    const perDay = num($('[data-roi-orders]', form));
+    if (!price || !profit) { out.textContent = 'প্রতি অর্ডারে আপনার লাভ কত টাকা, সেটা বসান।'; return; }
+    const orders = Math.ceil(price / profit);
+    const days = perDay ? Math.ceil(orders / perDay) : 0;
+    out.textContent = '';
+    out.append(`${taka(price)} উঠে আসবে `, strong(`${bn(orders)}টি অর্ডারে`));
+    if (days) out.append(` — দিনে ${bn(perDay)}টি হলে প্রায় `, strong(`${bn(days)} দিনে`));
+    out.append('। এরপর প্রতিটি অর্ডারের লাভ পুরোটাই আপনার।');
+  };
+  form.addEventListener('input', render);
+  form.addEventListener('submit', (e) => { e.preventDefault(); render(); });
+});

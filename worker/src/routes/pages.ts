@@ -109,7 +109,7 @@ pages.get('/', async (c) => {
     await ctx(c, { title: '', pageType: 'home', bannerTarget: 'home', ogImage: featured[0]?.cover }),
     V.homePage({
       settings, categories: cats.results, featured, coupons, reviews, faqs: faqs.results, stats: stats || { clients: 0, completed: 0, reviewCount: 0, reviewAvg: 0 },
-      designs: teaser, portfolio: works, whyUs: whyUs(settings), minPrice: prices.length ? Math.min(...prices) : null, now,
+      designs: teaser, portfolio: works, whyUs: whyUs(settings), problems: titledLines(settings.home_problems || ''), minPrice: prices.length ? Math.min(...prices) : null, now,
     }),
   );
 });
