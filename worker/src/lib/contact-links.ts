@@ -27,3 +27,17 @@ export function nameInText(text: string): string {
   const m = text.match(/(?:আমার নাম|নাম\s*[:：-]|my name is|i am|this is)\s*([^\d,।.!?\n:]{2,40})/i);
   return m ? m[1].replace(/\s+(এবং|আর|and|নম্বর|নাম্বার)$/i, '').trim() : '';
 }
+
+/** The chat window shows plain text: drop Markdown the model may still use (**bold**, # headings, `code`, "* " bullets). */
+export function plainChatText(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '$1: $2')
+    .replace(/^#{1,6}[ \t]+/gm, '')
+    .replace(/^[ \t]*[*-][ \t]+/gm, '• ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
