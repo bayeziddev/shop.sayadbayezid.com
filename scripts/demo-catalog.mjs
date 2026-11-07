@@ -9,6 +9,9 @@
  *
  * Every price here is ৳12,000 (the owner's instruction). Prices, delivery days and copy are adjustable
  * from Admin → প্যাকেজ.
+ *
+ * The short description, solution, description and benefits were later rewritten from the client's side in
+ * scripts/sales-copy.mjs (migration 0007) — that file is the current copy; the text below is the original.
  */
 export const HUB = 'https://demu.sayadbayezid.com';
 export const PRICE = 12000; // was 10000 in migration 0004; 0006 set every package to 12000 (owner's latest instruction)

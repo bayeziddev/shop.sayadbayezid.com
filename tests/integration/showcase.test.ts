@@ -46,7 +46,7 @@ describe('ready-made packages (one fixed price: ৳12,000)', () => {
   it('renders the package page with every section and clear calls to action', async () => {
     const { status, html } = await page('/package/gadget-market');
     expect(status).toBe(200);
-    for (const text of ['এই সাইট আপনার জন্য কী করবে', 'আপনার ব্যবসার লাভ', 'এই প্যাকেজে যা থাকছে', 'ফিচার ট্যুর — স্ক্রিনশটে দেখুন', 'কেন আমাদের কাছ থেকে নেবেন', 'ক্লায়েন্ট রিভিউ', 'এখনই অর্ডার করুন', 'লাইভ ডেমো দেখুন', 'অ্যাডমিন প্যানেল ডেমো', 'data-demo-click', 'data-sticky-cta']) {
+    for (const text of ['এই সাইট আপনার কোন ঝামেলা মেটাবে', 'আপনার ব্যবসার লাভ', 'এই প্যাকেজে যা থাকছে', 'ফিচার ট্যুর — স্ক্রিনশটে দেখুন', 'কেন আমাদের কাছ থেকে নেবেন', 'ক্লায়েন্ট রিভিউ', 'এখনই অর্ডার করুন', 'লাইভ ডেমো দেখুন', 'অ্যাডমিন প্যানেল ডেমো', 'data-demo-click', 'data-sticky-cta']) {
       expect(html, text).toContain(text);
     }
     expect(html).toContain('og:image" content="https://shop.example.com/assets/demos/gadget-market/cover.webp');
@@ -217,5 +217,57 @@ describe('full details on every package page', () => {
     expect(after.featureGroups).toEqual([{ title: 'নতুন গ্রুপ', items: ['এক', 'দুই'] }]);
     expect(after.tour[0].title).toBe('নতুন স্ক্রিন');
     expect((await call(`/api/admin/packages/${p.id}`, json({ screen_tour: [{ image: 'javascript:alert(1)', title: 'x' }] }, h, 'PUT'))).status).toBe(422);
+  });
+});
+
+describe('sales copy written from the client\'s side', () => {
+  it('gives every package its problems → solutions, how it works, benefits, profit points and calculator values', async () => {
+    const r = await call('/api/packages');
+    for (const p of r.body.data) {
+      expect(p.problems.length, p.slug).toBeGreaterThanOrEqual(4);
+      for (const it of p.problems) { expect(it.title, p.slug).toBeTruthy(); expect(it.text, p.slug).toBeTruthy(); }
+      expect(p.how.length, p.slug).toBeGreaterThanOrEqual(4);
+      expect(p.benefits.length, p.slug).toBeGreaterThanOrEqual(3);
+      expect(p.profit.length, p.slug).toBeGreaterThanOrEqual(3);
+      expect(p.roi.profit, p.slug).toBeGreaterThan(0);
+      expect(p.shortDescription.length, p.slug).toBeGreaterThan(40);
+      expect(p.solution, p.slug).toContain('\n\n'); // the problem first, then how the site solves it
+    }
+  });
+
+  it('shows the problem → solution grid, the day-to-day flow, the profit points and a working calculator on the package page', async () => {
+    const { html } = await page('/package/gadget-market');
+    for (const text of ['এখন যা হচ্ছে → এই সাইটে যা হবে', 'class="pain-grid"', 'কীভাবে কাজ করবে — ক্রেতা আসা থেকে ডেলিভারি', 'class="flow"', 'লাভের হিসাব — টাকা কোথা থেকে আসে, কোথায় বাঁচে', 'খরচ কতদিনে উঠে আসবে?', 'data-roi', 'বিক্রির নিশ্চয়তা নয়', 'href="#how"', 'href="#profit"']) {
+      expect(html, text).toContain(text);
+    }
+    // Server-rendered result for the example values (৳12,000 ÷ ৳250 = 48 orders; 5 a day ≈ 10 days) — works without JavaScript.
+    expect(html).toContain('<strong>৪৮টি অর্ডারে</strong>');
+    expect(html).toContain('<strong>১০ দিনে</strong>');
+  });
+
+  it('opens the home page with the visitor\'s problems and the honest FAQ answers', async () => {
+    const { html } = await page('/');
+    for (const text of ['অনলাইনে বিক্রি করতে গিয়ে এই ঝামেলাগুলো কি হচ্ছে?', 'ইনবক্সে অর্ডার হারিয়ে যায়', 'নিজের অনলাইন দোকানে', 'বিক্রি থেকে কোনো কমিশন নেই', 'ওয়েবসাইট বানালেই কি বিক্রি বাড়বে?', 'কেনার আগেই নিশ্চিত হন']) {
+      expect(html, text).toContain(text);
+    }
+    expect(html).not.toContain('প্রয়োজনীয় অ্যাড-অন যোগ করুন');
+  });
+
+  it('lets the admin edit every new part, and hides the calculator when its value is 0', async () => {
+    const h = await adminSession();
+    const p = (await call('/api/packages/prakriti-herbal')).body.data;
+    const ok = await call(`/api/admin/packages/${p.id}`, json({ problems: ['পুরনো সমস্যা | নতুন সমাধান'], how_it_works: ['প্রথম ধাপ | যা হয়'], profit_points: ['লাভ | কারণ'], roi_profit: 0, roi_orders: 0 }, h, 'PUT'));
+    expect(ok.status).toBe(200);
+    const after = (await call('/api/packages/prakriti-herbal')).body.data;
+    expect(after.problems).toEqual([{ title: 'পুরনো সমস্যা', text: 'নতুন সমাধান' }]);
+    expect(after.how[0].title).toBe('প্রথম ধাপ');
+    expect(after.roi).toEqual({ profit: 0, orders: 0 });
+    const { html } = await page('/package/prakriti-herbal');
+    expect(html).toContain('পুরনো সমস্যা');
+    expect(html).not.toContain('data-roi');
+    expect((await call(`/api/admin/packages/${p.id}`, json({ roi_profit: -5 }, h, 'PUT'))).status).toBe(422);
+    // Home page problems come from settings
+    expect((await call('/api/admin/settings', json({ home_problems: 'নিজের সমস্যা | নিজের সমাধান' }, h, 'PUT'))).status).toBe(200);
+    expect((await page('/')).html).toContain('নিজের সমস্যা');
   });
 });

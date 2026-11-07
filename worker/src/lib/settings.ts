@@ -37,6 +37,8 @@ export interface SiteSettings {
   why_us: string;
   /** "প্রতিটি সাইটে যা থাকছে" — one item per line, shown on every package page. */
   common_features: string;
+  /** Home page "এই ঝামেলাগুলো কি হচ্ছে?" — one per line: সমস্যা | সমাধান */
+  home_problems: string;
   pay_sslcommerz_enabled: boolean;
   pay_stripe_enabled: boolean;
   pay_bank_enabled: boolean;
@@ -84,6 +86,7 @@ export const SETTINGS_DEFAULTS: SiteSettings = {
   meta_test_event_code: '',
   why_us: '',
   common_features: '',
+  home_problems: '',
   pay_sslcommerz_enabled: true,
   pay_stripe_enabled: false,
   pay_bank_enabled: true,

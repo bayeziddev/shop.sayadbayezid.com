@@ -14,6 +14,7 @@ export interface PackageRow {
   ai_draft: string | null; category_slug?: string; category_name?: string;
   cover_image?: string; video_url?: string; solution?: string; benefits?: string; why_us?: string; demo_links?: string; demo_login?: string;
   feature_groups?: string; screen_tour?: string;
+  problems?: string; how_it_works?: string; profit_points?: string; roi_profit?: number; roi_orders?: number;
 }
 
 /** "A থেকে Z সব ফিচার": [{title, items[]}] (empty groups/items dropped). */
@@ -124,6 +125,14 @@ export function publicPackage(p: PackageRow, addons: AddonRow[], offers: OfferRo
     features: parseJson<string[]>(p.features, []),
     solution: p.solution || '',
     benefits: titledLines(parseJson<string[]>(p.benefits, [])),
+    /** "সমস্যা | সমাধান" pairs — the client's problem and how this site removes it. */
+    problems: titledLines(parseJson<string[]>(p.problems, [])).slice(0, 12),
+    /** "ধাপ | কী হয়" — how a normal order flows with this site. */
+    how: titledLines(parseJson<string[]>(p.how_it_works, [])).slice(0, 10),
+    /** "লাভের উৎস | ব্যাখ্যা" — where the money comes from. */
+    profit: titledLines(parseJson<string[]>(p.profit_points, [])).slice(0, 10),
+    /** Starting values for the cost-recovery calculator (0 = no calculator). */
+    roi: { profit: Math.max(0, Math.round(p.roi_profit || 0)), orders: Math.max(0, Math.round(p.roi_orders || 0)) },
     whyUs: titledLines(parseJson<string[]>(p.why_us, [])),
     featureGroups: featureGroups(p.feature_groups),
     tour: screenTour(p.screen_tour),

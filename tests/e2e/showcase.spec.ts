@@ -83,6 +83,21 @@ test('package page: screenshots, demo buttons and a working order button', async
   await page.waitForURL('**/checkout');
 });
 
+test('package page: problem → solution, how it works, and the cost-recovery calculator updates as you type', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('sb_leadbox_v1', JSON.stringify({ done: Date.now() })));
+  await page.goto('/package/sidra-jewellery');
+  await expect(page.locator('#solution .pain-card').first()).toBeVisible();
+  await expect(page.locator('#how .flow-step')).toHaveCount(5);
+  const out = page.locator('[data-roi-out]');
+  await expect(out).toContainText('৩০টি অর্ডারে'); // ৳12,000 ÷ ৳400 example
+  await page.locator('[data-roi-profit]').fill('600');
+  await page.locator('[data-roi-orders]').fill('2');
+  await expect(out).toContainText('২০টি অর্ডারে');
+  await expect(out).toContainText('১০ দিনে');
+  await page.locator('[data-roi-profit]').fill('');
+  await expect(out).toContainText('লাভ কত টাকা');
+});
+
 test('pages have no horizontal overflow, down to small 360px phones', async ({ page }, info) => {
   await page.addInitScript(() => localStorage.setItem('sb_leadbox_v1', JSON.stringify({ done: Date.now() })));
   // Mobile also checks a 360px phone: font metrics differ between machines, so leave real headroom.
