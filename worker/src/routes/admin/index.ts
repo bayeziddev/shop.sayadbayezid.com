@@ -14,7 +14,7 @@ import { listRows, toCsv, csvResponse, type ResourceDef } from './crud';
 import { changeProjectStatus, confirmPayment, getOrder, getOrderItems, issueReferralCoupon } from '../../lib/orders';
 import { portalToken } from '../../lib/portal-token';
 import { PROJECT_STATUSES, PROJECT_STATUS_BN, TRANSITIONS, LEAD_STATUSES, type ProjectStatus } from '../../../../shared/status';
-import { buildProvider, getAIConfig, keyStatus, PROVIDER_SECRETS, PROVIDER_DEFAULT_MODELS, type AIConfigRow } from '../../lib/ai-providers';
+import { aiErrorBn, buildProvider, getAIConfig, keyStatus, parseAiJson, PROVIDER_SECRETS, PROVIDER_DEFAULT_MODELS, type AIConfigRow } from '../../lib/ai-providers';
 import { sslcommerzConfigured } from '../../lib/payment/sslcommerz';
 import { stripeConfigured } from '../../lib/payment/stripe';
 import { REQUIREMENT_FIELDS } from '../portal';
@@ -437,11 +437,11 @@ admin.post('/ai/configs/:purpose/test', requirePerm('ai.use'), async (c) => {
   let okFlag = false;
   let detail = '';
   try {
-    const out = await buildProvider(c.env, cfg).generate({ system: 'শুধু বাংলায় এক শব্দে উত্তর দাও।', messages: [{ role: 'user', content: 'সংযোগ পরীক্ষা: "ঠিক আছে" লেখো।' }], maxTokens: 20 });
+    const out = await buildProvider(c.env, cfg).generate({ system: 'শুধু বাংলায় এক লাইনে উত্তর দাও।', messages: [{ role: 'user', content: 'সংযোগ পরীক্ষা: "ঠিক আছে" লেখো।' }], maxTokens: 64 });
     okFlag = true;
     detail = out.slice(0, 80);
   } catch (e) {
-    detail = String((e as Error).message).replace(/key=[^&\s]+/g, 'key=•••');
+    detail = aiErrorBn(e);
   }
   await c.env.DB.prepare('UPDATE ai_provider_configs SET last_test_at = ?, last_test_ok = ? WHERE id = ?').bind(nowIso(), okFlag ? 1 : 0, cfg.id).run();
   return ok(c, { ok: okFlag, detail });
@@ -460,13 +460,13 @@ admin.post('/ai/suggest', requirePerm('ai.use'), async (c) => {
   const prompt = `প্যাকেজের নাম: ${name}\nফিচার:\n${features.map((f) => `- ${f}`).join('\n')}\n${b.notes ? `অতিরিক্ত নির্দেশনা: ${clampStr(b.notes, 500)}` : ''}`;
   let draft: { title: string; shortDescription: string; description: string };
   try {
-    const raw = await buildProvider(c.env, cfg).generate({ system, messages: [{ role: 'user', content: prompt }], json: true, maxTokens: 1200 });
-    const parsed = JSON.parse(raw.replace(/^```(json)?|```$/g, '').trim()) as Record<string, unknown>;
+    const raw = await buildProvider(c.env, cfg).generate({ system, messages: [{ role: 'user', content: prompt }], json: true, maxTokens: 2048, temperature: 0.6 });
+    const parsed = parseAiJson(raw);
     draft = { title: clampStr(parsed.title, 150), shortDescription: clampStr(parsed.shortDescription, 300), description: clampStr(parsed.description, 8000) };
     if (!draft.title || !draft.description) throw new Error('incomplete');
   } catch (e) {
     console.error('ai suggest failed', e);
-    fail(502, 'এআই থেকে খসড়া পাওয়া যায়নি। সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।');
+    fail(502, `খসড়া তৈরি হয়নি: ${aiErrorBn(e)}`);
   }
   const packageId = toInt(b.packageId);
   if (packageId) await c.env.DB.prepare('UPDATE packages SET ai_draft = ? WHERE id = ?').bind(JSON.stringify({ ...draft, generatedAt: nowIso(), provider: cfg.provider }), packageId).run();

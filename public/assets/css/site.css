@@ -360,6 +360,8 @@ label.check input { width: 18px; height: 18px; margin-top: .3rem; flex: 0 0 auto
 .bubble.typing { opacity: .7; }
 .chat-form { display: flex; gap: .4rem; }
 .handoff { display: grid; gap: .5rem; padding: .7rem; border-radius: 12px; border: 1px dashed rgba(139,92,246,.5); }
+.handoff-title { margin: 0; font-size: .9rem; font-weight: 600; }
+.handoff .handoff-wa { text-align: center; }
 
 /* Toasts */
 .toast-wrap { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 90; display: grid; gap: .5rem; }
