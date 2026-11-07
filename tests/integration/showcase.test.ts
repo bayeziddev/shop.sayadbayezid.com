@@ -271,3 +271,24 @@ describe('sales copy written from the client\'s side', () => {
     expect((await page('/')).html).toContain('নিজের সমস্যা');
   });
 });
+
+describe('packages grouped by category, with the categories in a sidebar', () => {
+  it('shows a sidebar link and a group of package cards for every category that has packages — on the home page and on /packages', async () => {
+    const all = (await call('/api/packages')).body.data as any[];
+    const cats = [...new Set(all.map((p) => p.categorySlug))];
+    for (const path of ['/', '/packages']) {
+      const { html } = await page(path);
+      expect(html, path).toContain('class="shop-side"');
+      expect(html, path).not.toContain('class="card cat-card"'); // the big category cards are gone
+      for (const slug of cats) {
+        expect(html, `${path} ${slug}`).toContain(`data-side-link="cat-${slug}"`);
+        expect(html, `${path} ${slug}`).toContain(`id="cat-${slug}"`);
+      }
+      // every package appears once, inside its own category's group
+      for (const p of all) expect(html.split(`href="/package/${p.slug}" class="pkg-media"`).length - 1, `${path} ${p.slug}`).toBe(1);
+      const gadgets = html.slice(html.indexOf('id="cat-gadgets"'), html.indexOf('</section>', html.indexOf('id="cat-gadgets"')));
+      expect(gadgets).toContain('/package/gadget-market');
+      expect(gadgets).not.toContain('/package/lks-attire');
+    }
+  });
+});

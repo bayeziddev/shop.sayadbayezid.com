@@ -98,6 +98,17 @@ test('package page: problem → solution, how it works, and the cost-recovery ca
   await expect(out).toContainText('লাভ কত টাকা');
 });
 
+test('home page: category sidebar jumps to its group of packages and highlights it', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('sb_leadbox_v1', JSON.stringify({ done: Date.now() })));
+  await page.goto('/');
+  const side = page.locator('.shop-side');
+  await expect(side).toBeVisible();
+  await side.locator('[data-side-link="cat-jewellery"]').click();
+  await expect(page.locator('#cat-jewellery .pkg-card').first()).toBeInViewport();
+  await expect(side.locator('[data-side-link="cat-jewellery"]')).toHaveClass(/is-on/);
+  await expect(side).toBeInViewport(); // the sidebar stays on screen while the packages scroll
+});
+
 test('pages have no horizontal overflow, down to small 360px phones', async ({ page }, info) => {
   await page.addInitScript(() => localStorage.setItem('sb_leadbox_v1', JSON.stringify({ done: Date.now() })));
   // Mobile also checks a 360px phone: font metrics differ between machines, so leave real headroom.

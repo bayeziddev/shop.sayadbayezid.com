@@ -167,6 +167,33 @@ export function roiCalculator(price: number, roi: { profit: number; orders: numb
   </form>`;
 }
 
+export interface ShopCategory { id: number; slug: string; name: string; icon: string; description: string; image_key: string | null }
+
+/**
+ * Packages grouped by business type, with the categories in a sidebar (a narrow icon rail on phones).
+ * Sidebar links jump to each group; app.js highlights the group in view.
+ */
+export function catalogBrowser(cats: ShopCategory[], pkgs: PublicPackage[], coupons: CouponRow[], now: number, imageUrl: (key: string) => string): Raw {
+  const groups = cats.map((c) => ({ c, items: pkgs.filter((p) => p.categoryId === c.id) })).filter((g) => g.items.length);
+  const icon = (c: ShopCategory) => (c.image_key ? html`<img src="${imageUrl(c.image_key)}" alt="" loading="lazy">` : html`<span aria-hidden="true">${c.icon}</span>`);
+  return html`<div class="shop-layout" data-shop>
+  <aside class="shop-side" aria-label="ক্যাটাগরি">
+    <p class="side-title">ক্যাটাগরি</p>
+    <nav class="side-nav">${groups.map(({ c, items }, i) => html`<a href="#cat-${c.slug}" class="side-link ${i === 0 ? 'is-on' : ''}" data-side-link="cat-${c.slug}">
+      <span class="side-ico">${icon(c)}</span><span class="side-name">${c.name}</span><span class="side-count">${bnDigits(items.length)}</span></a>`)}
+    </nav>
+  </aside>
+  <div class="shop-main">${groups.map(({ c, items }) => html`<section class="shop-group" id="cat-${c.slug}" aria-labelledby="cat-${c.slug}-h">
+    <header class="group-head" data-edit="category:${c.id}">
+      <span class="group-ico">${icon(c)}</span>
+      <div class="group-text"><h3 id="cat-${c.slug}-h">${c.name} <span class="group-count">${bnDigits(items.length)}টি</span></h3>${c.description ? html`<p class="muted">${c.description}</p>` : ''}</div>
+      <a class="link-cta group-all" href="/category/${c.slug}">সব দেখুন <span aria-hidden="true">→</span></a>
+    </header>
+    <div class="pkg-grid">${items.map((p) => packageCard(p, coupons, now))}</div>
+  </section>`)}</div>
+</div>`;
+}
+
 export interface DesignView { id: number; kind: string; title: string; image: string; demo_url: string; note: string; package_slug: string | null; package_name: string | null; package_id: number | null }
 export const DESIGN_KINDS: [string, string][] = [
   ['hero', 'হোমপেজ / হিরো'], ['header', 'হেডার ও মেনু'], ['product', 'পণ্যের পেজ'], ['checkout', 'চেকআউট'], ['footer', 'ফুটার'],
