@@ -267,15 +267,30 @@ export async function packageEditor(root, id) {
     } catch (err) { setFieldError(form, err.code, err.message); toast(err.message, true); }
   });
   $('[data-suggest]', root)?.addEventListener('click', async (e) => {
-    const data = readForm(form, fields);
-    e.target.disabled = true;
-    e.target.textContent = 'তৈরি হচ্ছে…';
+    const btn = e.currentTarget;
+    const label = btn.textContent;
+    const el = (n) => form.elements.namedItem(n);
+    const name = (el('name')?.value || '').trim();
+    if (!name) { toast('আগে প্যাকেজের নাম লিখুন — এআই নাম ও ফিচার দেখে লেখে', true); el('name')?.focus(); return; }
+    const features = (el('features')?.value || '').split('\n').map((x) => x.trim()).filter(Boolean);
+    btn.disabled = true;
+    btn.textContent = 'তৈরি হচ্ছে… (১০–৩০ সেকেন্ড)';
     try {
-      await api('/ai/suggest', { method: 'POST', body: { packageId: isNew ? undefined : Number(id), name: data.name, features: data.features } });
-      toast('খসড়া তৈরি হয়েছে — পর্যালোচনা করুন');
-      if (!isNew) packageEditor(root, id);
+      const r = await api('/ai/suggest', { method: 'POST', body: { packageId: isNew ? undefined : Number(id), name, features } });
+      if (isNew) {
+        // Nothing is saved yet: put the suggestion straight into the form to review before saving.
+        const set = (n, v) => { const input = el(n); if (input && v) { input.value = v; input.dispatchEvent(new Event('input', { bubbles: true })); } };
+        set('name', r.draft.title); set('short_description', r.draft.shortDescription); set('description', r.draft.description);
+        toast('এআই-এর লেখা ফর্মে বসানো হয়েছে — দেখে সংরক্ষণ করুন');
+      } else {
+        toast('খসড়া তৈরি হয়েছে — উপরে পর্যালোচনা করে অনুমোদন দিন');
+        await packageEditor(root, id);
+        $('[data-draft]', root)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
     } catch (err) { toast(err.message, true); }
-    e.target.disabled = false;
+    btn.disabled = false;
+    btn.textContent = label;
   });
   $('[data-approve]', root)?.addEventListener('click', async () => {
     const body = Object.fromEntries($$('[data-d]', root).map((el) => [el.dataset.d, el.value]));
@@ -454,11 +469,12 @@ export async function aiSettingsView(root) {
   const d = await api('/ai/configs');
   const pl = { gemini: 'জেমিনি (গুগল)', workers_ai: 'ক্লাউডফ্লেয়ার ওয়ার্কার্স এআই', openai: 'ওপেনএআই' };
   root.innerHTML = `<div class="page-head"><h1>এআই সেটিংস</h1></div>
-    <p class="muted">এপিআই কী কখনো এখানে লেখা বা সংরক্ষণ করা হয় না — টার্মিনালে <code>wrangler secret put GEMINI_API_KEY</code> দিয়ে যোগ করুন। এখানে শুধু লুকানো আকারে অবস্থা দেখানো হয়।</p>
+    <p class="muted">এপিআই কী কখনো এখানে লেখা বা সংরক্ষণ করা হয় না — GitHub রিপোজিটরির Settings → Secrets → Actions-এ <code>GEMINI_API_KEY</code> রাখুন, পরের ডিপ্লয়ে নিজে থেকেই যুক্ত হয়। এখানে শুধু লুকানো আকারে অবস্থা দেখানো হয়। চ্যাটে জেমিনি কাজ না করলে সাইট নিজে থেকে ক্লাউডফ্লেয়ার এআই দিয়ে উত্তর দেয়।</p>
+    <datalist id="ai-models"><option value="gemini-2.5-flash"><option value="gemini-flash-latest"><option value="gemini-2.5-flash-lite"><option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast"><option value="gpt-4o-mini"></datalist>
     ${d.configs.map((c) => `<form class="card grid" data-purpose="${c.purpose}" style="max-width:760px;margin-bottom:1rem">
       <h2>${c.purpose === 'content' ? 'কনটেন্ট সাজেশন (প্যাকেজের বিবরণ)' : 'চ্যাট সাপোর্ট'}</h2>
       <div class="grid g2"><label>প্রোভাইডার<select name="provider">${d.providers.map((p) => `<option value="${p.id}" ${p.id === c.provider ? 'selected' : ''}>${esc(pl[p.id])}</option>`).join('')}</select></label>
-      <label>মডেল<input name="model" value="${esc(c.model)}"></label></div>
+      <label>মডেল<input name="model" value="${esc(c.model)}" list="ai-models"><small class="muted">জেমিনি: gemini-2.5-flash বা gemini-flash-latest</small></label></div>
       <p class="small">কী: ${c.key.configured ? statusPill('সংযুক্ত ' + c.key.hint, 'ok') : statusPill('যোগ করা হয়নি', 'warn')} ${c.last_test_at ? `· শেষ পরীক্ষা ${fmtDate(c.last_test_at)} ${c.last_test_ok ? '✓' : '✗'}` : ''}</p>
       <label>সিস্টেম নির্দেশনা<textarea name="system_prompt" rows="4">${esc(c.system_prompt)}</textarea></label>
       <label>লেখার ধরন<input name="tone" value="${esc(c.tone)}"></label>

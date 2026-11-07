@@ -13,20 +13,29 @@ function add(log, text, who) {
   return b;
 }
 
-function handoffForm(log) {
-  if (log.querySelector('.handoff')) return;
+function handoffForm(log, whatsapp) {
+  if (log.querySelector('.handoff') || log.dataset.leadDone) return;
   const f = document.createElement('form');
   f.className = 'handoff';
-  f.innerHTML = '<input name="name" required maxlength="100" placeholder="আপনার নাম"><input name="phone" required inputmode="tel" maxlength="20" placeholder="মোবাইল নম্বর"><button class="btn btn-primary btn-sm">প্রতিনিধির সাথে কথা বলতে চাই</button>';
+  f.innerHTML = '<p class="handoff-title">নাম ও হোয়াটসঅ্যাপ নম্বর দিন — আমাদের টিম ফ্রি পরামর্শ ও ডেমো পাঠাবে</p>'
+    + '<input name="name" required maxlength="100" autocomplete="name" placeholder="আপনার নাম">'
+    + '<input name="phone" required inputmode="tel" autocomplete="tel" maxlength="20" placeholder="হোয়াটসঅ্যাপ নম্বর (০১XXXXXXXXX)">'
+    + '<button class="btn btn-primary btn-sm">যোগাযোগ করতে বলুন</button>'
+    + (whatsapp ? '<a class="btn btn-ghost btn-sm handoff-wa" target="_blank" rel="noopener" data-wa>অথবা এখনই হোয়াটসঅ্যাপে লিখুন</a>' : '');
+  if (whatsapp) f.querySelector('[data-wa]').href = whatsapp;
   log.appendChild(f);
   log.scrollTop = log.scrollHeight;
+  f.querySelector('[data-wa]')?.addEventListener('click', () => window.SBTrack?.custom('ChatWhatsApp', { from: 'chat' }));
   f.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const btn = f.querySelector('button');
+    btn.disabled = true;
     try {
       const r = await api('/api/chat/handoff', { method: 'POST', body: { sessionId, name: f.name.value, phone: f.phone.value, attribution: attribution() } });
-      window.SBTrack?.fire('Lead', { content_name: 'chat' }, r.eventId);
-      f.replaceWith(Object.assign(document.createElement('div'), { className: 'bubble bot', textContent: 'ধন্যবাদ! আমাদের একজন প্রতিনিধি শীঘ্রই আপনার সাথে যোগাযোগ করবেন।' }));
-    } catch (err) { toast(err.message, true); }
+      if (r.eventId) window.SBTrack?.fire('Lead', { content_name: 'chat' }, r.eventId);
+      log.dataset.leadDone = '1';
+      f.replaceWith(Object.assign(document.createElement('div'), { className: 'bubble bot', textContent: 'ধন্যবাদ! আমাদের টিম শীঘ্রই আপনার হোয়াটসঅ্যাপে যোগাযোগ করবে। এর মধ্যে আর কিছু জানতে চাইলে এখানেই লিখুন।' }));
+    } catch (err) { toast(err.message, true); btn.disabled = false; }
   });
 }
 
@@ -59,14 +68,19 @@ async function setup(root) {
       add(log, text, 'me');
       const typing = add(log, 'লিখছে…', 'bot typing');
       try {
-        const r = await api('/api/chat/ai', { method: 'POST', body: { sessionId, message: text } });
+        const r = await api('/api/chat/ai', { method: 'POST', body: { sessionId, message: text, attribution: attribution() } });
         typing.remove();
         add(log, r.answer, 'bot');
-        if (r.escalate) handoffForm(log);
+        if (r.leadEventId) {
+          // The visitor typed their number in the chat: it is already a lead.
+          window.SBTrack?.fire('Lead', { content_name: 'chat' }, r.leadEventId);
+          log.dataset.leadDone = '1';
+          log.querySelector('.handoff')?.remove();
+        } else if (r.askLead) handoffForm(log, r.whatsapp || cfg.whatsapp);
       } catch (err) {
         typing.remove();
         add(log, err.message, 'bot');
-        handoffForm(log);
+        handoffForm(log, cfg.whatsapp);
       }
     });
   }
