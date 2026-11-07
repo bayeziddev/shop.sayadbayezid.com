@@ -114,6 +114,7 @@ p { margin: 0 0 1em; }
 .section-sm { padding: 2rem 0; }
 .section-head { text-align: center; margin-bottom: 2.2rem; }
 .page-hero { padding: 3.5rem 0 2.5rem; }
+@media (max-width: 760px) { .page-hero { padding: 1.4rem 0 1rem; } .page-hero .lead { font-size: 1rem; margin-bottom: 0; } .page-hero + .section { padding-top: 1.2rem; } }
 .crumbs { font-size: .9rem; color: var(--muted); margin-bottom: 1rem; }
 .crumbs a { text-decoration: none; }
 

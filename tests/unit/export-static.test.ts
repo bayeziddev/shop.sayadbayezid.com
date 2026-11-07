@@ -30,3 +30,13 @@ describe('static export for GitHub Pages', () => {
     expect(out).toContain('href="/package/x"'); // page links stay on the GitHub Pages domain
   });
 });
+
+describe('service worker', () => {
+  it('asks the server first for styles and scripts, and replaces the old forever-cache', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const sw = await readFile('public/sw.js', 'utf8');
+    expect(sw).not.toContain("'sb-v1'"); // a new cache name deletes the copy the first version kept forever
+    expect(sw).toMatch(/\(css\|js\)[\s\S]{0,200}fetch\(e\.request, \{ cache: 'no-cache' \}\)/);
+    expect(sw).not.toContain("'/assets/css/site.css'"); // no longer pre-cached
+  });
+});

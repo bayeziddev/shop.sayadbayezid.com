@@ -21,6 +21,8 @@ export interface PageCtx {
   noindex?: boolean;
   hideChrome?: boolean;
   ogImage?: string;
+  /** Styles/scripts version (?v=) so a new deploy never pairs new HTML with an old cached stylesheet. */
+  assetV?: string;
 }
 
 /** Absolute URL for share images: uploads live on the Worker, everything else on the public site. */
@@ -97,12 +99,12 @@ ${isSplit(ctx.env) ? html`<meta name="sb-api-base" content="${ctx.env.SITE_URL.r
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="preload" href="/assets/fonts/anek-bangla-bengali-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/hind-siliguri-bengali-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/assets/css/site.css">
-<script src="/assets/js/theme.js"></script>
+<link rel="stylesheet" href="/assets/css/site.css?v=${ctx.assetV || 'dev'}">
+<script src="/assets/js/theme.js?v=${ctx.assetV || 'dev'}"></script>
 ${jsonScript('track-config', trackingConfig(ctx))}
 ${ctx.settings.lead_box_enabled ? jsonScript('leadbox-config', leadBoxConfig(ctx)) : ''}
-<script src="/assets/js/track.js" defer></script>
-<script src="/assets/js/app.js" type="module"></script>
+<script src="/assets/js/track.js?v=${ctx.assetV || 'dev'}" defer></script>
+<script src="/assets/js/app.js?v=${ctx.assetV || 'dev'}" type="module"></script>
 </head>
 <body class="page-${ctx.pageType}">
 <a class="skip" href="#main">মূল অংশে যান</a>

@@ -3,7 +3,8 @@
 // - bundles shared/pricing.ts → dist/assets/js/pricing.js (same engine the Worker uses)
 // - vendors fonts and Chart.js from node_modules (no third-party CDNs)
 import { build } from 'esbuild';
-import { cp, mkdir, rm, writeFile, copyFile } from 'node:fs/promises';
+import { cp, mkdir, rm, writeFile, copyFile, readdir, readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 
 const out = 'dist';
@@ -28,6 +29,14 @@ for (const f of fonts) {
 await mkdir(`${out}/admin/assets/vendor`, { recursive: true });
 await copyFile('node_modules/chart.js/dist/chart.umd.min.js', `${out}/admin/assets/vendor/chart.umd.js`);
 
+// Version of the site's styles and scripts. Pages link them as ?v=<this>, so a new deploy never shows new HTML
+// with an old stylesheet (the Worker reads this file once per isolate).
+const hash = createHash('sha256');
+for (const dir of [`${out}/assets/css`, `${out}/assets/js`]) {
+  for (const f of (await readdir(dir)).sort()) hash.update(f).update(await readFile(`${dir}/${f}`));
+}
+await writeFile(`${out}/assets/version.txt`, hash.digest('hex').slice(0, 12));
+
 // Security headers for static assets (the Worker adds them to dynamic responses).
 const common = `  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
   X-Content-Type-Options: nosniff
@@ -44,7 +53,16 @@ ${common}
 /assets/fonts/*
   Cache-Control: public, max-age=31536000, immutable
 
-/assets/*
+/assets/css/*
+  Cache-Control: public, no-cache
+
+/assets/js/*
+  Cache-Control: public, no-cache
+
+/assets/img/*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+/assets/demos/*
   Cache-Control: public, max-age=3600, stale-while-revalidate=86400
 
 /sw.js

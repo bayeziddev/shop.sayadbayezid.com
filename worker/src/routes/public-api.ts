@@ -170,24 +170,37 @@ function contactInfo(env: AppBindings['Bindings'], s: Awaited<ReturnType<typeof 
   return { waIntl, waLocal, waLink, text: lines.join('\n') };
 }
 
-async function buildKnowledge(c: { env: AppBindings['Bindings'] }, extra: string, contacts: string): Promise<string> {
+/**
+ * What the chat assistant knows, kept short on purpose (about a third of the old size): every chat message
+ * sends all of it, so a long text burns the free Gemini quota in minutes and is too long for the Workers AI
+ * fallback. Package FAQs stay on the package pages; the assistant links there.
+ */
+export async function buildKnowledge(env: AppBindings['Bindings'], extra: string, contacts: string): Promise<string> {
   const now = Date.now();
-  const pkgs = await loadPublicPackages(c.env);
-  const faqs = (await c.env.DB.prepare('SELECT question, answer FROM faqs WHERE is_active = 1 ORDER BY sort_order LIMIT 40').all<{ question: string; answer: string }>()).results;
-  const s = await getSettings(c.env);
-  const site = publicOrigin(c.env);
+  const cut = (t: string, n: number) => (t.length > n ? t.slice(0, n - 1).trimEnd() + '…' : t);
+  const pkgs = await loadPublicPackages(env);
+  const faqs = (await env.DB.prepare(`SELECT question, answer FROM faqs WHERE is_active = 1 AND scope = 'sitewide' ORDER BY sort_order, id LIMIT 12`).all<{ question: string; answer: string }>()).results;
+  const s = await getSettings(env);
+  const site = publicOrigin(env);
   const pk = pkgs.map((p) => {
     const offer = p.offers.find((o) => isOfferLive(o, now));
-    return `- ${p.name} (${p.categoryName}): দাম ${taka(p.basePrice)} এককালীন${offer ? `, চলমান অফার: ${offer.discountType === 'percent' ? offer.discountValue + '%' : taka(offer.discountValue)} ছাড়` : ''}${p.status === 'coming_soon' ? ' [শীঘ্রই আসছে]' : ''}; ডেলিভারি ${p.deliveryDays} কর্মদিবস; কার জন্য: ${p.shortDescription}; মূল ফিচার: ${p.features.slice(0, 6).join(', ')}${p.addons.length ? `; অ্যাড-অন: ${p.addons.map((a) => `${a.name} +${taka(a.priceDelta)}`).join(', ')}` : ''}; লাইভ ডেমো: ${p.demoUrl || '—'}; বিস্তারিত: ${site}/package/${p.slug}`;
+    return [
+      `- ${p.name} (${p.categoryName})`,
+      `${taka(p.basePrice)} এককালীন${offer ? `, অফার: ${offer.discountType === 'percent' ? offer.discountValue + '%' : taka(offer.discountValue)} ছাড়` : ''}${p.status === 'coming_soon' ? ' [শীঘ্রই আসছে]' : ''}`,
+      `${p.deliveryDays} কর্মদিবস`,
+      cut(p.shortDescription, 130),
+      p.demoUrl ? `ডেমো: ${p.demoUrl}` : '',
+      `${site}/package/${p.slug}`,
+    ].filter(Boolean).join(' | ');
   }).join('\n');
   return [
     `প্রতিষ্ঠান: ${s.brand_name}।`,
     `যোগাযোগ (ভিজিটর চাইলে সরাসরি দেবে — ডেভেলপার ও মালিকের সাথেও এই নম্বরেই কথা বলা যায়):\n${contacts}`,
-    'কাজের ধাপ: প্যাকেজ বাছাই → অনলাইনে পেমেন্ট (বিকাশ/নগদ/রকেট/কার্ড/ব্যাংক) → তথ্য জমা → ডেভেলপমেন্ট → ক্লায়েন্ট রিভিউ → সংশোধন → ডেলিভারি। পেমেন্ট নিশ্চিত হওয়ার আগে কাজ শুরু হয় না।',
-    `প্যাকেজসমূহ:\n${pk}`,
-    `প্রশ্নোত্তর:\n${faqs.map((f) => `প্রশ্ন: ${f.question}\nউত্তর: ${f.answer}`).join('\n')}`,
-    extra ? `অতিরিক্ত তথ্য:\n${extra}` : '',
-  ].filter(Boolean).join('\n\n').slice(0, 26000);
+    'কাজের ধাপ: প্যাকেজ বাছাই → অনলাইনে পেমেন্ট (বিকাশ/নগদ/রকেট/কার্ড/ব্যাংক) → তথ্য জমা → ডেভেলপমেন্ট → ক্লায়েন্ট রিভিউ → সংশোধন → ডেলিভারি। পেমেন্ট নিশ্চিত হওয়ার আগে কাজ শুরু হয় না। প্রতিটি প্যাকেজের বিস্তারিত ফিচার ও প্রশ্নোত্তর তার পেজে আছে।',
+    `প্যাকেজসমূহ (নাম | দাম | ডেলিভারি | কার জন্য | ডেমো | বিস্তারিত):\n${pk}`,
+    faqs.length ? `প্রশ্নোত্তর:\n${faqs.map((f) => `প্র: ${f.question}\nউ: ${cut(f.answer, 260)}`).join('\n')}` : '',
+    extra ? `অতিরিক্ত তথ্য:\n${cut(extra, 2000)}` : '',
+  ].filter(Boolean).join('\n\n').slice(0, 12000);
 }
 
 const ESCALATE = '[ESCALATE]';
@@ -285,7 +298,7 @@ publicApi.post('/api/chat/ai', async (c) => {
 ৪. নিশ্চিত উত্তর জানা না থাকলে বা ভিজিটর মানুষের সাথে কথা বলতে চাইলে উত্তরের শুরুতে হুবহু ${ESCALATE} লিখবে এবং হোয়াটসঅ্যাপ নম্বর দেবে।
 ৫. কোনো প্যাকেজের কথা বললে তার লাইভ ডেমো বা বিস্তারিত লিংক দাও।
 
-${await buildKnowledge(c, cs.knowledge, contacts.text)}`;
+${await buildKnowledge(c.env, cs.knowledge, contacts.text)}`;
     const r = await generateWithFallback(c.env, cfg, { system, messages: transcript.map(({ role, content }) => ({ role, content })), maxTokens: 600, temperature: 0.3 });
     if (r.error) console.error('chat ai: configured provider failed, answered with', r.provider, r.error);
     provider = r.provider;

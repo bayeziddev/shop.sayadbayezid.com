@@ -292,3 +292,22 @@ describe('packages grouped by category, with the categories in a sidebar', () =>
     }
   });
 });
+
+describe('category pages keep the category list on the left', () => {
+  it('lists every category as a link to its own page, marks the current one, and shows only its packages', async () => {
+    const { html } = await page('/category/gadgets');
+    expect(html).toContain('class="shop-side"');
+    expect(html).toMatch(/href="\/category\/gadgets" class="side-link is-on" aria-current="page"/);
+    expect(html).toContain('href="/category/jewellery"');
+    expect(html).toContain('/package/gadget-market');
+    expect(html).not.toContain('/package/sidra-jewellery" class="pkg-media"');
+  });
+});
+
+describe('updates reach returning visitors', () => {
+  it('links the stylesheet and scripts with the build version, so new HTML never pairs with an old cached stylesheet', async () => {
+    const { html } = await page('/');
+    expect(html).toMatch(/href="\/assets\/css\/site\.css\?v=([a-f0-9]{12}|dev)"/);
+    expect(html).toMatch(/src="\/assets\/js\/app\.js\?v=([a-f0-9]{12}|dev)"/);
+  });
+});

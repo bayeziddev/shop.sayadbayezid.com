@@ -326,7 +326,12 @@ $$('[data-shop]').forEach((shop) => {
   let queued = false;
   addEventListener('scroll', () => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; pick(); }); } }, { passive: true });
   links.forEach((a) => a.addEventListener('click', () => setOn(a.dataset.sideLink)));
-  pick();
+  if (groups.length) pick();
+  else {
+    // A category page: the sidebar links to the other categories — just bring the current one into view.
+    const on = $('.side-link.is-on', shop);
+    if (on && side && side.scrollHeight > side.clientHeight) side.scrollTop = Math.max(0, on.getBoundingClientRect().top - side.getBoundingClientRect().top - side.clientHeight / 3);
+  }
 });
 
 /* Cost-recovery calculator on package pages: price ÷ profit per order = orders needed; ÷ orders per day = days. */
