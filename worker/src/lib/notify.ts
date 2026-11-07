@@ -88,6 +88,19 @@ export async function notifyStatusChange(env: Env, order: NotifiableOrder, statu
   await sendAll(env, { to: { email: order.customer_email, phone: order.customer_phone }, subject: `অর্ডার ${order.order_number}: ${label}`, text, orderId: order.id }, [order.customer_name, order.order_number, label, link]);
 }
 
+/** A course order is paid: tell the student their course is open and where to sign in. */
+export async function notifyCourseReady(env: Env, order: NotifiableOrder, courseTitles: string[]) {
+  const s = await getSettings(env);
+  const link = `${env.SITE_URL.replace(/\/$/, '')}/student`;
+  const text = [
+    `প্রিয় ${order.customer_name},`,
+    `আপনার পেমেন্ট নিশ্চিত হয়েছে — কোর্স চালু হয়েছে: ${courseTitles.join(', ')}`,
+    `মোবাইল নম্বর আর পাসওয়ার্ড দিয়ে লগইন করে প্রোফাইল থেকে লেসন দেখুন: ${link}`,
+    `— ${s.brand_name}`,
+  ].join('\n');
+  await sendAll(env, { to: { email: order.customer_email, phone: order.customer_phone }, subject: `কোর্স চালু হয়েছে — ${order.order_number}`, text, orderId: order.id }, [order.customer_name, order.order_number, 'কোর্স চালু', link]);
+}
+
 export async function notifyAdminEmail(env: Env, subject: string, text: string) {
   if (env.ADMIN_ALERT_EMAIL) await sendEmail(env, { to: { email: env.ADMIN_ALERT_EMAIL }, subject, text });
 }

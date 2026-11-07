@@ -16,6 +16,17 @@ describe('static export for GitHub Pages', () => {
     expect(paths.some((p) => /^\/(admin|order|portal)/.test(p))).toBe(false);
   });
 
+  it('copies course pages with their enrol and ad pages, but never the student area', () => {
+    const xml = ['/courses', '/course-category/python', '/course/fb-ads', '/student', '/learn/fb-ads']
+      .map((p) => `<url><loc>https://shop.sayadbayezid.com${p}</loc></url>`).join('');
+    const paths = pathsFromSitemap(`<urlset>${xml}</urlset>`);
+    expect(paths).toEqual(expect.arrayContaining(['/courses', '/course-category/python', '/course/fb-ads', '/enroll/fb-ads', '/lp/course/fb-ads']));
+    expect(paths.some((p) => /^\/(student|learn)/.test(p))).toBe(false);
+    // No page may become a folder that shadows another page's .html file on GitHub Pages.
+    const files = paths.map(fileFor);
+    for (const f of files) expect(files.some((g) => g.startsWith(f.replace(/\.html$/, '/')))).toBe(false);
+  });
+
   it('never publishes the admin app or the Worker headers file', () => {
     for (const p of ['dist/admin', 'dist/admin/index.html', 'dist/_headers', '/home/x/dist/admin/assets/js/main.js']) expect(keepAsset(p)).toBe(false);
     for (const p of ['dist', 'dist/assets/css/site.css', 'dist/sw.js', 'dist/assets/js/app.js']) expect(keepAsset(p)).toBe(true);

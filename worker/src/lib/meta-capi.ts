@@ -147,6 +147,7 @@ export async function sendPurchaseIfPaid(env: Env, pixelId: string, order: PaidO
   if (env.PAYMENT_MODE !== 'live') return { sent: false, reason: 'sandbox_payment' };
   if (order.purchase_sent_at) return { sent: false, reason: 'already_sent' };
   if (order.is_internal) return { sent: false, reason: 'internal_traffic' };
+  if (!(order.paid_amount ?? order.total)) return { sent: false, reason: 'free_enrollment' }; // a free course is not a purchase
   const claimed = await env.DB.prepare("UPDATE orders SET purchase_sent_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND purchase_sent_at IS NULL AND payment_status = 'paid'")
     .bind(order.id).run();
   if (!claimed.meta.changes) return { sent: false, reason: 'already_sent' };

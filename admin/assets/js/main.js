@@ -5,7 +5,7 @@ import * as V from './views.js';
 
 const app = $('#app');
 const NAV = [
-  ['dashboard', 'ড্যাশবোর্ড', '◧'], ['preview', 'সাইট প্রিভিউ ও এডিট', '👁'], ['categories', 'ক্যাটাগরি', '▦'], ['packages', 'প্যাকেজ', '◫'], ['designs', 'ডিজাইন গ্যালারি', '▤'], ['portfolio', 'সফল ডেলিভারি', '✓'], ['landing-pages', 'ল্যান্ডিং পেজ', '⬚'], ['tracking', 'ট্র্যাকিং ও বিজ্ঞাপন', '◎'],
+  ['dashboard', 'ড্যাশবোর্ড', '◧'], ['preview', 'সাইট প্রিভিউ ও এডিট', '👁'], ['categories', 'ক্যাটাগরি', '▦'], ['packages', 'প্যাকেজ', '◫'], ['designs', 'ডিজাইন গ্যালারি', '▤'], ['portfolio', 'সফল ডেলিভারি', '✓'], ['courses', 'কোর্স', '🎓'], ['course-categories', 'কোর্স ক্যাটাগরি', '▧'], ['students', 'শিক্ষার্থী', '👤'], ['enrollments', 'কোর্স এক্সেস', '🔑'], ['landing-pages', 'ল্যান্ডিং পেজ', '⬚'], ['tracking', 'ট্র্যাকিং ও বিজ্ঞাপন', '◎'],
   ['orders', 'অর্ডার / প্রজেক্ট', '🧾'], ['leads', 'লিড', '☏'], ['coupons', 'কুপন', '%'], ['offers', 'ক্যাটাগরি অফার', '⏱'], ['banners', 'ব্যানার / পপআপ', '▭'],
   ['faqs', 'প্রশ্নোত্তর', '?'], ['reviews', 'রিভিউ', '★'], ['chats', 'চ্যাট', '💬'], ['chat-settings', 'চ্যাট সেটিংস', '⚙'], ['ai-settings', 'এআই সেটিংস', '✨'],
   ['reports', 'রিপোর্ট', '📈'], ['staff', 'স্টাফ ও ভূমিকা', '👥'], ['activity', 'অ্যাক্টিভিটি লগ', '≡'], ['settings', 'সিস্টেম সেটিংস', '⚒'], ['help', 'সহায়তা কেন্দ্র', 'ⓘ'],
@@ -83,6 +83,25 @@ async function refreshSidebar() {
 const catOpts = () => state.lookups.categories.map((c) => [c.id, c.name]);
 const pkgOpts = () => state.lookups.packages.map((p) => [p.id, p.name]);
 const catName = (id) => state.lookups.categories.find((c) => c.id === id)?.name || '—';
+const ccatOpts = () => (state.lookups.courseCategories || []).map((c) => [c.id, `${c.icon || ''} ${c.name}`.trim()]);
+const ccatName = (id) => (state.lookups.courseCategories || []).find((c) => c.id === id)?.name || '—';
+const courseOpts = () => (state.lookups.courses || []).map((c) => [c.id, c.name]);
+const COURSE_STATUS = { draft: ['খসড়া', 'warn'], published: ['প্রকাশিত', 'ok'], coming_soon: ['শীঘ্রই আসছে', 'info'], archived: ['আর্কাইভ', 'bad'] };
+const ENR_SOURCE = { purchase: 'পেমেন্ট', admin: 'হাতে দেওয়া', free: 'ফ্রি' };
+/** Give a course to a student by mobile number (creates the account when the number is new). */
+const grantForm = (values = {}, reload) => openForm({
+  title: 'কোর্স এক্সেস দিন',
+  fields: [
+    { name: 'courseId', label: 'কোর্স', type: 'select', options: courseOpts, required: true, numeric: true },
+    { name: 'phone', label: 'শিক্ষার্থীর মোবাইল নম্বর', required: true, inputType: 'tel', placeholder: '01XXXXXXXXX' },
+    { name: 'name', label: 'নাম (নতুন শিক্ষার্থী হলে)' },
+    { name: 'password', label: 'পাসওয়ার্ড (নতুন শিক্ষার্থী হলে, কমপক্ষে ৬ অক্ষর)', inputType: 'text' },
+    { name: 'note', label: 'নোট (যেমন: অফলাইনে নগদ পেমেন্ট)' },
+  ],
+  values,
+  extra: '<p class="small muted">টাকা অনলাইনে এলে ভর্তি নিজে থেকেই চালু হয় — এটি শুধু হাতে দেওয়া এক্সেসের জন্য (উপহার, অফলাইন পেমেন্ট ইত্যাদি)। এখানে কোনো “পারচেজ” ইভেন্ট যায় না।</p>',
+  onSubmit: async (d) => { const r = await api('/enrollments/grant', { method: 'POST', body: d }); toast(r.created ? 'নতুন শিক্ষার্থী তৈরি করে কোর্স দেওয়া হয়েছে' : 'কোর্স দেওয়া হয়েছে'); reload?.(); },
+});
 const pkgName = (id) => state.lookups.packages.find((p) => p.id === id)?.name || '—';
 const refreshLookups = async () => { state.lookups = await api('/lookups'); };
 
@@ -146,6 +165,61 @@ const R = {
       { name: 'is_featured', label: 'হোমপেজে দেখান', type: 'bool' }, { name: 'sort_order', label: 'ক্রম', type: 'number', default: 0 }, { name: 'is_active', label: 'সক্রিয়', type: 'bool', default: 1 },
     ],
     newValues: { is_active: 1, sort_order: 0 },
+  },
+  'course-categories': {
+    title: 'কোর্স ক্যাটাগরি', singular: 'কোর্স ক্যাটাগরি', endpoint: '/course-categories', writePerm: 'catalog.write',
+    intro: 'যত খুশি ক্যাটাগরি — যেমন ডিজিটাল মার্কেটিং, ওয়েব ডেভেলপমেন্ট, পাইথন, গ্রাফিক ডিজাইন। সাইটের “কোর্স” পেজে সাইডবারে দেখায়।',
+    filters: [{ name: 'is_active', label: 'অবস্থা', options: [['1', 'সক্রিয়'], ['0', 'নিষ্ক্রিয়']] }],
+    columns: [{ label: 'নাম', render: (c) => `${esc(c.icon)} <b>${esc(c.name)}</b><br><span class="small muted">/course-category/${esc(c.slug)}</span>` }, { label: 'বিবরণ', render: (c) => `<span class="small">${esc(c.description)}</span>` }, { label: 'ক্রম', render: (c) => bn(c.sort_order) }, { label: 'অবস্থা', render: (c) => yesNo(c.is_active) }],
+    fields: [{ name: 'name', label: 'নাম', required: true }, { name: 'slug', label: 'স্লাগ (ইউআরএল)', required: true, pattern: '[a-z0-9]+(-[a-z0-9]+)*', hint: 'যেমন digital-marketing' }, { name: 'description', label: 'বিবরণ', type: 'textarea', rows: 2 }, { name: 'icon', label: 'আইকন (ইমোজি)', max: 8 }, { name: 'image_key', label: 'ছবি (ঐচ্ছিক — আইকনের বদলে)', type: 'image' }, { name: 'sort_order', label: 'ক্রম', type: 'number', default: 0 }, { name: 'is_active', label: 'সক্রিয়', type: 'bool', default: 1 }],
+    newValues: { is_active: 1, sort_order: 0, icon: '🎓' },
+    rowActions: [{ key: 'courses', label: 'কোর্সগুলো', run: (c) => { location.hash = `#/courses?category_id=${c.id}`; } }],
+    after: refreshLookups,
+  },
+  courses: {
+    title: 'কোর্স', endpoint: '/courses', writePerm: 'catalog.write', titleKey: 'title', fields: null,
+    intro: 'প্রতিটি কোর্সের নিজস্ব সেলস পেজ (/course/…) ও বিজ্ঞাপনের পেজ (/lp/course/…) থাকে। লেসন, ভিডিও, প্রাইভেট লিংক ও ফাইল কোর্স খুলে যোগ করুন। শিক্ষার্থী পেমেন্ট করার পর পেমেন্ট নিশ্চিত হলেই কোর্সটি তার প্রোফাইলে খোলে।',
+    filters: [{ name: 'category_id', label: 'ক্যাটাগরি', options: ccatOpts }, { name: 'status', label: 'অবস্থা', options: Object.entries(COURSE_STATUS).map(([k, v]) => [k, v[0]]) }],
+    columns: [
+      { label: 'কোর্স', render: (x) => `<a href="#/courses/${x.id}"><b>${esc(x.title)}</b></a><br><span class="small muted">${esc(ccatName(x.category_id))} · /course/${esc(x.slug)}</span>` },
+      { label: 'দাম', render: (x) => (x.price ? taka(x.price) : 'ফ্রি') + (x.regular_price > x.price ? ` <s class="small muted">${taka(x.regular_price)}</s>` : '') },
+      { label: 'অবস্থা', render: (x) => statusPill(...(COURSE_STATUS[x.status] || [x.status])) + (x.is_featured ? ' ' + statusPill('হোমপেজে') : '') },
+      { label: 'হালনাগাদ', render: (x) => `<span class="small">${fmtDate(x.updated_at)}</span>` },
+    ],
+    onCreate: () => { location.hash = '#/courses/new'; },
+    onOpen: (x) => { location.hash = `#/courses/${x.id}`; },
+    rowActions: [{ key: 'enr', label: 'শিক্ষার্থী', run: (x) => { location.hash = `#/enrollments?course_id=${x.id}`; } }],
+  },
+  students: {
+    title: 'শিক্ষার্থী', singular: 'শিক্ষার্থী', endpoint: '/students', writePerm: 'orders.write',
+    intro: 'ভর্তি ফর্ম থেকে অ্যাকাউন্ট নিজে থেকেই তৈরি হয় (মোবাইল নম্বর = লগইন)। কেউ পাসওয়ার্ড ভুলে গেলে হোয়াটসঅ্যাপে নম্বর যাচাই করে এখানে নতুন পাসওয়ার্ড দিন — তার পুরোনো সব লগইন বন্ধ হয়ে যাবে।',
+    filters: [{ name: 'is_blocked', label: 'অবস্থা', options: [['0', 'সক্রিয়'], ['1', 'ব্লক']] }],
+    columns: [
+      { label: 'শিক্ষার্থী', render: (x) => `<b>${esc(x.name)}</b><br><span class="small muted">${esc(x.phone)}${x.email ? ' · ' + esc(x.email) : ''}</span>` },
+      { label: 'কোর্স', render: (x) => `<a href="#/enrollments?student_id=${x.id}">${bn(x.courses || 0)}টি</a>` },
+      { label: 'শেষ লগইন', render: (x) => `<span class="small">${fmtDate(x.last_login_at)}</span>` },
+      { label: '', render: (x) => (x.is_blocked ? statusPill('ব্লক', 'bad') : statusPill('সক্রিয়', 'ok')) },
+    ],
+    fields: (row) => [{ name: 'name', label: 'নাম', required: true }, { name: 'phone', label: 'মোবাইল নম্বর (লগইন)', required: true, inputType: 'tel' }, { name: 'email', label: 'ইমেইল', inputType: 'email' }, { name: 'password', label: row ? 'নতুন পাসওয়ার্ড (বদলাতে চাইলে, কমপক্ষে ৬ অক্ষর)' : 'পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)', inputType: 'text', required: !row }, { name: 'notes', label: 'নোট (শিক্ষার্থী দেখবেন না)', type: 'textarea', rows: 2 }, { name: 'is_blocked', label: 'ব্লক — লগইন ও সব কোর্স বন্ধ', type: 'bool' }],
+    toApi: (d) => { if (!d.password) delete d.password; return d; },
+    rowActions: [{ key: 'grant', label: '+ কোর্স দিন', perm: 'orders.write', run: (x, reload) => grantForm({ phone: x.phone }, reload) }, { key: 'wa', label: 'হোয়াটসঅ্যাপ', run: (x) => window.open(`https://wa.me/${String(x.phone).replace(/\D/g, '')}`, '_blank', 'noopener') }],
+  },
+  enrollments: {
+    title: 'কোর্স এক্সেস (এনরোলমেন্ট)', singular: 'এক্সেস', endpoint: '/enrollments', writePerm: 'orders.write', titleKey: 'course_title',
+    intro: 'কোন শিক্ষার্থী কোন কোর্স দেখতে পান। পেমেন্ট নিশ্চিত হলে (গেটওয়ে বা আপনার যাচাই) নিজে থেকেই যোগ হয়। বন্ধ করলে শিক্ষার্থী আর লেসন খুলতে পারবেন না।',
+    filters: [{ name: 'course_id', label: 'কোর্স', options: courseOpts }, { name: 'status', label: 'অবস্থা', options: [['active', 'চালু'], ['revoked', 'বন্ধ']] }, { name: 'source', label: 'উৎস', options: Object.entries(ENR_SOURCE) }],
+    columns: [
+      { label: 'শিক্ষার্থী', render: (e) => `<b>${esc(e.student_name)}</b><br><span class="small muted">${esc(e.student_phone)}</span>` },
+      { label: 'কোর্স', render: (e) => esc(e.course_title) },
+      { label: 'অগ্রগতি', render: (e) => `${bn(e.done)}/${bn(e.total)}` },
+      { label: 'উৎস', render: (e) => `${esc(ENR_SOURCE[e.source] || e.source)}${e.order_number ? `<br><a class="small" href="#/orders/${e.order_id}">${esc(e.order_number)}</a>` : ''}${e.note ? `<br><span class="small muted">${esc(e.note)}</span>` : ''}` },
+      { label: 'অবস্থা', render: (e) => (e.status === 'active' ? statusPill('চালু', 'ok') : statusPill('বন্ধ', 'bad')) + `<br><span class="small muted">${fmtDate(e.created_at, false)}</span>` },
+    ],
+    onCreate: (reload) => grantForm({}, reload),
+    rowActions: [
+      { key: 'off', label: 'বন্ধ করুন', perm: 'orders.write', show: (e) => e.status === 'active', run: async (e, reload) => { await api(`/enrollments/${e.id}`, { method: 'PUT', body: { status: 'revoked' } }); toast('এক্সেস বন্ধ হয়েছে'); reload(); } },
+      { key: 'on', label: 'আবার চালু', perm: 'orders.write', show: (e) => e.status !== 'active', run: async (e, reload) => { await api(`/enrollments/${e.id}`, { method: 'PUT', body: { status: 'active' } }); toast('এক্সেস চালু হয়েছে'); reload(); } },
+    ],
   },
   'landing-pages': {
     title: 'ল্যান্ডিং পেজ', endpoint: '/landing-pages', writePerm: 'marketing.write', titleKey: 'title', intro: 'প্রতিটি বিজ্ঞাপন ক্যাম্পেইনের জন্য আলাদা পেজ — নিজস্ব হিরো, অফার ও ট্র্যাকিংসহ। মেনুতে দেখা যায় না।',
@@ -245,6 +319,7 @@ async function route() {
     else if (name === 'leads') { await V.leadsView(fresh); if (id) V.openLead(Number(id)); }
     else if (name === 'packages' && id) await V.packageEditor(fresh, id);
     else if (name === 'landing-pages' && id) await V.landingEditor(fresh, id);
+    else if (name === 'courses' && id) await V.courseEditor(fresh, id);
     else if (name === 'chats') await V.chatsView(fresh);
     else if (name === 'chat-settings') await V.chatSettingsView(fresh);
     else if (name === 'ai-settings') await V.aiSettingsView(fresh);
@@ -256,6 +331,12 @@ async function route() {
     else if (R[name]) {
       const cfg = { ...R[name], ...(id ? { openId: id } : {}) };
       if (name === 'offers' && query) { const cat = new URLSearchParams(query).get('cat'); if (cat) cfg.defaultFilters = { ...cfg.defaultFilters, scope_id: cat }; }
+      if (query && ['courses', 'enrollments'].includes(name)) {
+        const qp = new URLSearchParams(query);
+        const f = {};
+        for (const k of ['category_id', 'course_id', 'student_id', 'status']) if (qp.get(k)) f[k] = qp.get(k);
+        cfg.defaultFilters = { ...cfg.defaultFilters, ...f };
+      }
       const reloadLookups = cfg.after;
       if (reloadLookups) { const orig = cfg.toApi; cfg.toApi = (d, r) => { setTimeout(reloadLookups, 300); return orig ? orig(d, r) : d; }; }
       await listView(fresh, cfg);

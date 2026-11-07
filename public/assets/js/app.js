@@ -1,5 +1,6 @@
 import { $, $$, bn, taka, toast, api, captureAttribution, attribution, updateCartCount, formJson, showFieldError, setMsg } from './lib.js';
 import './leadbox.js';
+if (document.querySelector('[data-enroll-form],[data-student-login],[data-student-logout],[data-student-password],[data-lesson-done]')) import('./course.js');
 
 captureAttribution();
 updateCartCount();
@@ -273,7 +274,7 @@ $$('[data-chat-open-alt]').forEach((b) => b.addEventListener('click', () => $('[
 
 /* Sticky order bar on phones: visible once the configurator's own button has scrolled away */
 const sticky = $('[data-sticky-cta]');
-const mainOrder = $('[data-order-now]');
+const mainOrder = $('[data-order-now]') || $('[data-enroll-main]');
 if (sticky && mainOrder) {
   // A scroll check (not IntersectionObserver): a fast fling can jump the button from below the screen to above it
   // without ever "intersecting", and the bar must still appear.

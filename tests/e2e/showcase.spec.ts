@@ -101,7 +101,7 @@ test('package page: problem → solution, how it works, and the cost-recovery ca
 test('home page: category sidebar jumps to its group of packages and highlights it', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('sb_leadbox_v1', JSON.stringify({ done: Date.now() })));
   await page.goto('/');
-  const side = page.locator('.shop-side');
+  const side = page.locator('#websites .shop-side');
   await expect(side).toBeVisible();
   await side.locator('[data-side-link="cat-jewellery"]').click();
   await expect(page.locator('#cat-jewellery .pkg-card').first()).toBeInViewport();
@@ -115,7 +115,7 @@ test('pages have no horizontal overflow, down to small 360px phones', async ({ p
   const widths = info.project.name === 'mobile' ? [page.viewportSize()!.width, 360] : [page.viewportSize()!.width];
   for (const width of widths) {
     await page.setViewportSize({ width, height: 800 });
-    for (const path of ['/', '/packages', '/category/gadgets', '/designs', '/portfolio', '/package/sidra-jewellery', '/contact', '/checkout']) {
+    for (const path of ['/', '/packages', '/category/gadgets', '/designs', '/portfolio', '/package/sidra-jewellery', '/contact', '/checkout', '/courses', '/course/facebook-digital-marketing', '/course-category/digital-marketing', '/student']) {
       await page.goto(path);
       // Compare with the intended width: a too-wide element makes mobile Chrome zoom out and widen innerWidth too.
       const overflow = await page.evaluate((w) => document.documentElement.scrollWidth - w, width);

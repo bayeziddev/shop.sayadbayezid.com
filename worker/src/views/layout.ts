@@ -124,18 +124,20 @@ ${popup ? html`<dialog class="popup" data-popup="${popup.id}"><button class="pop
 
 function header(ctx: PageCtx): Raw {
   const s = ctx.settings;
-  const link = (href: string, label: string) => html`<a href="${href}" ${ctx.path === href ? raw('aria-current="page"') : ''}>${label}</a>`;
+  const link = (href: string, label: string, cls = '') => html`<a href="${href}" ${cls ? raw(`class="${cls}"`) : ''} ${ctx.path === href ? raw('aria-current="page"') : ''}>${label}</a>`;
   return html`<header class="site-header">
   <div class="container nav">
     <a class="brand" href="/">${logoSvg()}<span>${s.brand_name}</span></a>
     <nav class="nav-links" id="nav-links" aria-label="প্রধান মেনু">
-      ${link('/packages', 'সব প্যাকেজ')}
+      ${link('/packages', 'ওয়েবসাইট')}
+      ${link('/courses', 'কোর্স')}
       ${link('/designs', 'ডিজাইন গ্যালারি')}
-      ${link('/portfolio', 'সফল ডেলিভারি')}
-      ${link('/quiz', 'কোনটা নেব?')}
-      ${link('/faq', 'প্রশ্নোত্তর')}
+      ${link('/portfolio', 'সফল ডেলিভারি', 'nav-mid')}
+      ${link('/quiz', 'কোনটা নেব?', 'nav-more')}
+      ${link('/faq', 'প্রশ্নোত্তর', 'nav-more')}
       ${link('/contact', 'যোগাযোগ')}
-      ${link('/account', 'আমার অর্ডার')}
+      ${link('/account', 'আমার অর্ডার', 'nav-mid')}
+      <a class="nav-student" href="${ctx.env.SITE_URL.replace(/\/$/, '')}/student">আমার কোর্স</a>
     </nav>
     <div class="nav-actions">
       ${ctx.settings.lead_box_enabled ? html`<button type="button" class="btn btn-primary btn-sm nav-cta" data-leadbox-open data-leadbox-from="header">ফ্রি পরামর্শ</button>` : ''}
@@ -158,6 +160,7 @@ function footer(ctx: PageCtx): Raw {
       ${contactBlock(s)}
     </div>
     <div><h4>সেবা</h4><a href="/packages">সব রেডি ওয়েবসাইট</a><a href="/designs">ডিজাইন গ্যালারি</a><a href="/portfolio">সফল ডেলিভারি</a><a href="/quote">ফ্রি কোটেশন</a><a href="/quiz">প্যাকেজ বাছাই কুইজ</a></div>
+    <div><h4>কোর্স</h4><a href="/courses">সব অনলাইন কোর্স</a><a href="${ctx.env.SITE_URL.replace(/\/$/, '')}/student">আমার কোর্স — লগইন</a></div>
     <div><h4>সহায়তা</h4><a href="/faq">প্রশ্নোত্তর</a><a href="/account">অর্ডারের অবস্থা</a><a href="/contact">যোগাযোগ</a><a href="/about">আমাদের সম্পর্কে</a></div>
     <div><h4>নীতিমালা</h4><a href="/refund-policy">রিফান্ড নীতি</a><a href="/terms">শর্তাবলি</a><a href="/privacy">গোপনীয়তা নীতি</a></div>
   </div>

@@ -2,7 +2,8 @@ import type { Env } from '../env';
 import { canTransition, PROJECT_STATUS_BN, type ProjectStatus } from '../../../shared/status';
 import { audit, notifyAdmins } from './audit';
 import { sendPurchaseIfPaid, type PaidOrderForCapi } from './meta-capi';
-import { notifyStatusChange, notifyAdminEmail } from './notify';
+import { notifyStatusChange, notifyAdminEmail, notifyCourseReady } from './notify';
+import { grantCourseOrder } from './courses';
 import { getSettings } from './settings';
 import { nowIso, randomToken, taka } from './util';
 
@@ -38,9 +39,15 @@ export interface OrderRow extends PaidOrderForCapi {
   status_changed_at: string;
   created_at: string;
   updated_at: string;
+  /** 'website' (a project) or 'course' (opens course access when paid). */
+  kind: string;
+  student_id: number | null;
 }
 
-export interface OrderItemRow { id: number; order_id: number; package_id: number; package_name: string; base_price: number; addons: string; subtotal: number; offer_id: number | null; offer_discount: number; total: number }
+export interface OrderItemRow { id: number; order_id: number; package_id: number; package_name: string; base_price: number; addons: string; subtotal: number; offer_id: number | null; offer_discount: number; total: number; course_id: number | null }
+
+/** Pixel / CAPI content id of an order line: the package id, or course-<id> for a course. */
+export const contentIdOf = (i: Pick<OrderItemRow, 'package_id' | 'course_id'>) => (i.course_id ? `course-${i.course_id}` : String(i.package_id));
 
 export async function nextCounter(env: Env, name: 'invoice' | 'order'): Promise<number> {
   const r = await env.DB.prepare('UPDATE counters SET value = value + 1 WHERE name = ? RETURNING value').bind(name).first<{ value: number }>();
@@ -126,15 +133,26 @@ export async function confirmPayment(env: Env, orderId: number, p: PaymentConfir
   if (order.coupon_id) stmts.push(env.DB.prepare('UPDATE coupons SET used_count = used_count + 1 WHERE id = ?').bind(order.coupon_id));
   await env.DB.batch(stmts);
 
-  const fresh = (await getOrder(env, orderId))!;
+  let fresh = (await getOrder(env, orderId))!;
   const items = await getOrderItems(env, orderId);
   const settings = await getSettings(env);
 
+  // A course order has no project: the payment itself opens the course in the student's profile.
+  if (fresh.kind === 'course') {
+    await grantCourseOrder(env, orderId);
+    await env.DB.batch([
+      env.DB.prepare("UPDATE orders SET project_status = 'completed', status_changed_at = ?, updated_at = ? WHERE id = ?").bind(nowIso(), nowIso(), orderId),
+      env.DB.prepare('INSERT INTO order_status_history (order_id, from_status, to_status, note, actor) VALUES (?, ?, ?, ?, ?)').bind(orderId, 'confirmed', 'completed', 'কোর্স চালু — শিক্ষার্থীর প্রোফাইলে যোগ হয়েছে', p.actor),
+    ]);
+    fresh = (await getOrder(env, orderId))!;
+  }
+
   const work = (async () => {
-    await notifyAdmins(env, 'payment', `পেমেন্ট নিশ্চিত: ${fresh.order_number} — ${taka(fresh.total)}`, `#/orders/${orderId}`);
+    await notifyAdmins(env, 'payment', `পেমেন্ট নিশ্চিত: ${fresh.order_number} — ${taka(fresh.total)}${fresh.kind === 'course' ? ' (কোর্স চালু হয়েছে)' : ''}`, `#/orders/${orderId}`);
     await notifyAdminEmail(env, `নতুন পেমেন্ট: ${fresh.order_number}`, `${fresh.customer_name} (${fresh.customer_phone}) ${taka(fresh.total)} পরিশোধ করেছেন।`);
-    await notifyStatusChange(env, fresh, 'confirmed');
-    await sendPurchaseIfPaid(env, settings.meta_pixel_id, fresh, items.map((i) => String(i.package_id)));
+    if (fresh.kind === 'course') await notifyCourseReady(env, fresh, items.map((i) => i.package_name));
+    else await notifyStatusChange(env, fresh, 'confirmed');
+    await sendPurchaseIfPaid(env, settings.meta_pixel_id, fresh, items.map(contentIdOf));
   })().catch((e) => console.error('post-payment work failed', e));
   if (ctx) ctx.waitUntil(work);
   else await work;

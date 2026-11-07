@@ -246,7 +246,7 @@ export function portfolioCard(w: PortfolioView): Raw {
 </article>`;
 }
 
-export function leadForm(opts: { source: 'quote' | 'contact' | 'landing'; packageId?: number; title?: string; landingPageId?: number; compact?: boolean }): Raw {
+export function leadForm(opts: { source: 'quote' | 'contact' | 'landing'; packageId?: number; title?: string; landingPageId?: number; compact?: boolean; message?: string }): Raw {
   return html`<form class="card form lead-form" data-lead-form data-source="${opts.source}" ${opts.packageId ? html`data-package-id="${opts.packageId}"` : ''} ${opts.landingPageId ? html`data-landing-id="${opts.landingPageId}"` : ''}>
   ${opts.title ? html`<h3>${opts.title}</h3>` : ''}
   <div class="grid-2">
@@ -254,7 +254,7 @@ export function leadForm(opts: { source: 'quote' | 'contact' | 'landing'; packag
     <label>মোবাইল নম্বর<input name="phone" required inputmode="tel" maxlength="20" autocomplete="tel" placeholder="০১XXXXXXXXX"></label>
   </div>
   ${opts.compact ? '' : html`<div class="grid-2"><label>ইমেইল (ঐচ্ছিক)<input name="email" type="email" maxlength="200" autocomplete="email"></label><label>ব্যবসার নাম (ঐচ্ছিক)<input name="business_name" maxlength="150"></label></div>`}
-  <label>${opts.source === 'quote' ? 'আপনার চাহিদা লিখুন' : 'বার্তা'}<textarea name="message" rows="${opts.compact ? 2 : 4}" maxlength="3000" ${opts.source === 'quote' ? raw('required') : ''} placeholder="${opts.source === 'quote' ? 'কী ধরনের সাইট, কয়টি পেজ, কোনো রেফারেন্স সাইট…' : ''}"></textarea></label>
+  <label>${opts.source === 'quote' ? 'আপনার চাহিদা লিখুন' : 'বার্তা'}<textarea name="message" rows="${opts.compact ? 2 : 4}" maxlength="3000" ${opts.source === 'quote' ? raw('required') : ''} placeholder="${opts.source === 'quote' ? 'কী ধরনের সাইট, কয়টি পেজ, কোনো রেফারেন্স সাইট…' : ''}">${opts.message || ''}</textarea></label>
   <input name="website" tabindex="-1" autocomplete="off" class="hp" aria-hidden="true">
   <button class="btn btn-primary btn-block">${opts.source === 'quote' ? 'কোটেশন চাই — ফ্রি' : opts.source === 'landing' ? 'আমার সাথে যোগাযোগ করুন' : 'বার্তা পাঠান'}</button>
   <p class="form-msg" data-form-msg role="status"></p>
