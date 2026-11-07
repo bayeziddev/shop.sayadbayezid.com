@@ -82,13 +82,14 @@ const notFound = async (c: Context<AppBindings>) => {
 pages.get('/', async (c) => {
   const now = Date.now();
   const env = c.env;
-  const [cats, featured, coupons, reviews, faqs, stats] = await Promise.all([
+  const [cats, featured, allPkgs, coupons, reviews, faqs, stats] = await Promise.all([
     env.DB.prepare(
       `SELECT c.*, (SELECT COUNT(*) FROM packages p WHERE p.category_id = c.id AND p.status IN ('active','coming_soon')) AS package_count,
               (SELECT MIN(base_price) FROM packages p WHERE p.category_id = c.id AND p.status = 'active') AS min_price
        FROM categories c WHERE c.is_active = 1 ORDER BY c.sort_order, c.id`,
     ).all<CategoryRow & { package_count: number; min_price: number | null }>(),
     loadPublicPackages(env, { featuredOnly: true }),
+    loadPublicPackages(env),
     visibleCoupons(env),
     approvedReviews(c),
     env.DB.prepare(`SELECT question, answer FROM faqs WHERE is_active = 1 AND scope = 'sitewide' ORDER BY sort_order, id`).all<{ question: string; answer: string }>(),
@@ -108,7 +109,7 @@ pages.get('/', async (c) => {
   return layout(
     await ctx(c, { title: '', pageType: 'home', bannerTarget: 'home', ogImage: featured[0]?.cover }),
     V.homePage({
-      settings, categories: cats.results, featured, coupons, reviews, faqs: faqs.results, stats: stats || { clients: 0, completed: 0, reviewCount: 0, reviewAvg: 0 },
+      settings, categories: cats.results, featured, packages: allPkgs, coupons, reviews, faqs: faqs.results, stats: stats || { clients: 0, completed: 0, reviewCount: 0, reviewAvg: 0 },
       designs: teaser, portfolio: works, whyUs: whyUs(settings), problems: titledLines(settings.home_problems || ''), minPrice: prices.length ? Math.min(...prices) : null, now,
     }),
   );
@@ -167,10 +168,13 @@ pages.get('/package/:slug', async (c) => {
 
 pages.get('/packages', async (c) => {
   const now = Date.now();
-  const [pkgs, coupons] = await Promise.all([loadPublicPackages(c.env), visibleCoupons(c.env)]);
+  const [pkgs, coupons, cats] = await Promise.all([
+    loadPublicPackages(c.env), visibleCoupons(c.env),
+    c.env.DB.prepare('SELECT * FROM categories WHERE is_active = 1 ORDER BY sort_order, id').all<CategoryRow>(),
+  ]);
   return layout(
     await ctx(c, { title: 'সব রেডি ওয়েবসাইট', description: 'লাইভ ডেমোসহ সব রেডি ওয়েবসাইট প্যাকেজ — দাম, ফিচার ও ডেলিভারির সময় এক জায়গায়।', pageType: 'category', bannerTarget: 'category', ogImage: pkgs[0]?.cover }),
-    V.packagesPage(pkgs, coupons, now),
+    V.packagesPage(cats.results, pkgs, coupons, now),
   );
 });
 

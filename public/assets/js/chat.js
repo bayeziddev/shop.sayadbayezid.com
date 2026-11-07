@@ -4,10 +4,26 @@ let cfg = null;
 let sessionId = sessionStorage.getItem('sb_chat_sid');
 if (!sessionId) { sessionId = 'c' + crypto.randomUUID().replace(/-/g, ''); sessionStorage.setItem('sb_chat_sid', sessionId); }
 
+/** Plain text with tappable links: https:// links open in a new tab, Bangladeshi mobile numbers dial. No HTML is ever parsed. */
+function linkify(el, text) {
+  const re = /(https?:\/\/[^\s<>"')]+)|((?:\+?88)?01[3-9]\d{8})/g;
+  let last = 0;
+  for (const m of text.matchAll(re)) {
+    if (m.index > last) el.append(text.slice(last, m.index));
+    const a = document.createElement('a');
+    const url = m[1] ? m[1].replace(/[.,!?।]+$/, '') : '';
+    if (url) { a.href = url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = url; }
+    else { a.href = `tel:${m[2]}`; a.textContent = m[2]; }
+    el.append(a);
+    last = m.index + (url || m[2]).length;
+  }
+  if (last < text.length) el.append(text.slice(last));
+}
+
 function add(log, text, who) {
   const b = document.createElement('div');
   b.className = `bubble ${who}`;
-  b.textContent = text;
+  if (who === 'bot') linkify(b, text); else b.textContent = text;
   log.appendChild(b);
   log.scrollTop = log.scrollHeight;
   return b;

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { geminiProvider, thinkingConfig, GEMINI_FALLBACK_MODEL } from '../../worker/src/lib/ai-providers/gemini';
 import { aiErrorBn, parseAiJson } from '../../worker/src/lib/ai-providers/index';
-import { nameInText, phoneInText } from '../../worker/src/lib/contact-links';
+import { nameInText, phoneInText, plainChatText } from '../../worker/src/lib/contact-links';
 
 const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 const ok = (text: string, finishReason = 'STOP') => reply(200, { candidates: [{ content: { parts: [{ text }] }, finishReason }] });
@@ -72,5 +72,12 @@ describe('reading a number and a name from a chat message', () => {
     expect(nameInText('আমার নাম রহিম, নম্বর ০১৭১১২২২৩৩৩')).toBe('রহিম');
     expect(nameInText('My name is Karim 01711222333')).toBe('Karim');
     expect(nameInText('দাম কত?')).toBe('');
+  });
+});
+
+describe('chat answers are plain text', () => {
+  it('drops the Markdown Gemini adds, keeping the number and the link', () => {
+    const live = 'হোয়াটসঅ্যাপ নম্বর হলো: **01519601517**। \n\n\n* লিংক: [এখানে](https://wa.me/message/TDYG575YENF6F1)\n## শেষ';
+    expect(plainChatText(live)).toBe('হোয়াটসঅ্যাপ নম্বর হলো: 01519601517।\n\n• লিংক: এখানে: https://wa.me/message/TDYG575YENF6F1\nশেষ');
   });
 });

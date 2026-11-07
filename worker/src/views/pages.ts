@@ -4,7 +4,7 @@ import { mediaUrl } from '../lib/catalog';
 import { taka, bnDigits, bnDate } from '../lib/util';
 import {
   browserFrame, phoneFrame, packageCard, priceBlock, liveOffer, countdown, offerBadge, couponChip, couponsFor, reviewCard, faqList, leadForm, stars,
-  demoLink, videoPlayer, pointCards, designCard, portfolioCard, shotCaption, isTallShot, tierLabel, DESIGN_KINDS, problemGrid, roiCalculator,
+  demoLink, videoPlayer, pointCards, designCard, portfolioCard, shotCaption, isTallShot, tierLabel, DESIGN_KINDS, problemGrid, roiCalculator, catalogBrowser,
   type ReviewView, type DesignView, type PortfolioView,
 } from './components';
 import type { SiteSettings } from '../lib/settings';
@@ -13,6 +13,8 @@ export interface HomeData {
   settings: SiteSettings;
   categories: (CategoryRow & { package_count: number; min_price: number | null })[];
   featured: PublicPackage[];
+  /** Every visible package, grouped by category on the home page. */
+  packages: PublicPackage[];
   coupons: CouponRow[];
   reviews: ReviewView[];
   faqs: { question: string; answer: string }[];
@@ -68,24 +70,11 @@ ${d.problems.length ? html`<section class="section pains" id="problems">
 
 <section class="section" id="categories">
   <div class="container">
-    <header class="section-head"><h2>আপনার ব্যবসার ধরন বেছে নিন</h2><p class="muted">প্রতিটি ক্যাটাগরিতে আমাদের তৈরি আসল সাইটের লাইভ ডেমো আছে</p></header>
-    <div class="cat-grid">
-      ${d.categories.filter((c) => c.package_count > 0).map((c) => html`<a class="card cat-card" href="/category/${c.slug}" data-edit="category:${c.id}">
-        ${c.image_key ? html`<img src="${mediaUrl(c.image_key)}" alt="" loading="lazy">` : html`<span class="cat-ico" aria-hidden="true">${c.icon}</span>`}
-        <h3>${c.name}</h3><p class="muted">${c.description}</p>
-        <span class="cat-meta">${bnDigits(c.package_count)}টি প্যাকেজ${c.min_price !== null ? html` · ${taka(c.min_price)} থেকে` : ''} <span aria-hidden="true">→</span></span>
-      </a>`)}
-    </div>
+    <header class="section-head"><h2>আপনার ব্যবসার জন্য রেডি ওয়েবসাইট</h2><p class="muted">পাশের তালিকা থেকে ব্যবসার ধরন বেছে নিন — প্রতিটি সাইটের লাইভ ডেমো আছে, এক দাম ${d.minPrice ? taka(d.minPrice) : ''}</p></header>
+    ${catalogBrowser(d.categories, d.packages, d.coupons, d.now, mediaUrl)}
+    <p class="center"><a class="btn btn-ghost btn-lg" href="/packages">সব প্যাকেজ এক পেজে দেখুন <span aria-hidden="true">→</span></a></p>
   </div>
 </section>
-
-${d.featured.length ? html`<section class="section">
-  <div class="container">
-    <header class="section-head"><h2>জনপ্রিয় রেডি ওয়েবসাইট</h2><p class="muted">ক্লিক করে লাইভ ডেমো ঘুরে দেখুন — পছন্দ হলে আজই অর্ডার করুন</p></header>
-    <div class="pkg-grid">${d.featured.slice(0, 9).map((p) => packageCard(p, d.coupons, d.now))}</div>
-    <p class="center"><a class="btn btn-ghost btn-lg" href="/packages">সব প্যাকেজ দেখুন <span aria-hidden="true">→</span></a></p>
-  </div>
-</section>` : ''}
 
 ${d.designs.length ? html`<section class="section designs-teaser">
   <div class="container">
@@ -152,8 +141,7 @@ function filterChips(cats: { slug: string; name: string }[], allLabel: string): 
   return html`<div class="chip-row" data-filter-chips role="toolbar" aria-label="ক্যাটাগরি অনুযায়ী দেখুন"><button type="button" class="chip is-on" data-filter="">${allLabel}</button>${cats.map((c) => html`<button type="button" class="chip" data-filter="${c.slug}">${c.name}</button>`)}</div>`;
 }
 
-export function packagesPage(pkgs: PublicPackage[], coupons: CouponRow[], now: number): Raw {
-  const cats = [...new Map(pkgs.map((p) => [p.categorySlug || '', { slug: p.categorySlug || '', name: p.categoryName || '' }])).values()];
+export function packagesPage(categories: CategoryRow[], pkgs: PublicPackage[], coupons: CouponRow[], now: number): Raw {
   return html`
 <section class="page-hero mesh">
   <div class="container">
@@ -163,9 +151,8 @@ export function packagesPage(pkgs: PublicPackage[], coupons: CouponRow[], now: n
   </div>
 </section>
 <section class="section">
-  <div class="container" data-filter-scope>
-    ${filterChips(cats, `সব (${bnDigits(pkgs.length)})`)}
-    <div class="pkg-grid">${pkgs.map((p) => packageCard(p, coupons, now))}</div>
+  <div class="container">
+    ${catalogBrowser(categories, pkgs, coupons, now, mediaUrl)}
     <div class="card quote-nudge"><div><h3>যেমন চান ঠিক তেমন নেই?</h3><p class="muted">আপনার চাহিদা জানান — কাস্টম সাইটের দাম জানিয়ে দেব।</p></div><a class="btn btn-primary" href="/quote">ফ্রি কোটেশন নিন →</a></div>
   </div>
 </section>`;

@@ -296,6 +296,39 @@ if (tabs.length && 'IntersectionObserver' in window) {
   tabs.forEach((a) => { const s = document.querySelector(a.getAttribute('href')); if (s) io2.observe(s); });
 }
 
+/* Category sidebar: highlight the category in view, and keep its link visible inside the (scrollable) sidebar. */
+$$('[data-shop]').forEach((shop) => {
+  const links = $$('[data-side-link]', shop);
+  const side = $('.shop-side', shop);
+  const groups = links.map((a) => document.getElementById(a.dataset.sideLink)).filter(Boolean);
+  let current = '';
+  const setOn = (id) => {
+    if (id === current) return;
+    current = id;
+    links.forEach((a) => {
+      const on = a.dataset.sideLink === id;
+      a.classList.toggle('is-on', on);
+      if (on) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current');
+      if (on && side && side.scrollHeight > side.clientHeight) {
+        // Scroll the sidebar itself (never the page) so the active category stays visible in it.
+        const top = a.getBoundingClientRect().top - side.getBoundingClientRect().top + side.scrollTop;
+        if (top < side.scrollTop || top + a.offsetHeight > side.scrollTop + side.clientHeight) side.scrollTo({ top: Math.max(0, top - side.clientHeight / 3), behavior: 'smooth' });
+      }
+    });
+  };
+  // The active group is the last one whose heading has passed just under the sticky header.
+  const pick = () => {
+    const line = (parseFloat(getComputedStyle(groups[0] || document.body).scrollMarginTop) || 80) + 40;
+    let cur = groups[0];
+    for (const g of groups) { if (g.getBoundingClientRect().top <= line) cur = g; else break; }
+    if (cur) setOn(cur.id);
+  };
+  let queued = false;
+  addEventListener('scroll', () => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; pick(); }); } }, { passive: true });
+  links.forEach((a) => a.addEventListener('click', () => setOn(a.dataset.sideLink)));
+  pick();
+});
+
 /* Cost-recovery calculator on package pages: price ÷ profit per order = orders needed; ÷ orders per day = days. */
 $$('[data-roi]').forEach((form) => {
   const price = Number(form.dataset.price) || 0;

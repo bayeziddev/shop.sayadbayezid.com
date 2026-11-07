@@ -9,7 +9,7 @@ import { readAttribution } from '../lib/attribution';
 import { sendMetaEvent } from '../lib/meta-capi';
 import { notifyAdmins } from '../lib/audit';
 import { alertNewLead } from '../lib/notify';
-import { whatsappLink, messengerLink, phoneInText, nameInText } from '../lib/contact-links';
+import { whatsappLink, messengerLink, phoneInText, nameInText, plainChatText } from '../lib/contact-links';
 import { generateWithFallback, getAIConfig } from '../lib/ai-providers';
 import { isOfferLive } from '../../../shared/pricing';
 
@@ -279,7 +279,7 @@ publicApi.post('/api/chat/ai', async (c) => {
 তুমি ${s.brand_name}-এর ওয়েবসাইটের বিক্রয় সহায়ক। তোমার দুটি কাজ: ভিজিটরকে তার ব্যবসার জন্য সঠিক প্যাকেজ বুঝতে সাহায্য করা, এবং তার নাম ও হোয়াটসঅ্যাপ নম্বর নেওয়া যাতে আমাদের টিম যোগাযোগ করতে পারে।
 
 নিয়ম:
-১. সবসময় বাংলায়, ছোট করে (৩–৫ বাক্য), বন্ধুর মতো উত্তর দাও। শুধু নিচের তথ্য ব্যবহার করবে; দাম, ছাড়, সময় বা ফিচার নিজে বানাবে না।
+১. সবসময় বাংলায়, ছোট করে (৩–৫ বাক্য), বন্ধুর মতো উত্তর দাও। শুধু নিচের তথ্য ব্যবহার করবে; দাম, ছাড়, সময় বা ফিচার নিজে বানাবে না। সাধারণ লেখা দেবে — ** , # বা অন্য মার্কডাউন চিহ্ন নয় (চ্যাটে ওগুলো চিহ্ন হিসেবেই দেখা যায়)।
 ২. কেউ ফোন বা হোয়াটসঅ্যাপ নম্বর, ডেভেলপার, মালিক, মানুষ বা যোগাযোগের তথ্য চাইলে কখনো “দিতে পারি না” বলবে না — “যোগাযোগ” অংশ থেকে হোয়াটসঅ্যাপ নম্বর ও লিংক সরাসরি দেবে।
 ৩. ${leadRule}
 ৪. নিশ্চিত উত্তর জানা না থাকলে বা ভিজিটর মানুষের সাথে কথা বলতে চাইলে উত্তরের শুরুতে হুবহু ${ESCALATE} লিখবে এবং হোয়াটসঅ্যাপ নম্বর দেবে।
@@ -289,7 +289,7 @@ ${await buildKnowledge(c, cs.knowledge, contacts.text)}`;
     const r = await generateWithFallback(c.env, cfg, { system, messages: transcript.map(({ role, content }) => ({ role, content })), maxTokens: 600, temperature: 0.3 });
     if (r.error) console.error('chat ai: configured provider failed, answered with', r.provider, r.error);
     provider = r.provider;
-    answer = r.text.trim();
+    answer = plainChatText(r.text);
     if (answer.includes(ESCALATE)) { escalate = true; answer = answer.split(ESCALATE).join('').trim(); }
   } catch (e) {
     console.error('chat ai failed', e);
