@@ -32,13 +32,26 @@ function errorReason(status: number, body: GeminiResponse | null): string {
   return `http_${status}${msg ? `: ${msg}` : ''}`;
 }
 
-/** Google Gemini (default content provider). Key: GEMINI_API_KEY secret. */
-export function geminiProvider(apiKey: string | undefined, model: string): AIProvider {
-  const call = async (input: AIGenerateInput, useModel: string, withThinking: boolean, budget: number) => {
+/**
+ * Second route to the same models: Vertex AI with the Google service account (GOOGLE_SERVICES_JSON).
+ * Used when there is no API key, or when Google refuses the key (invalid, blocked, out of quota).
+ */
+export interface VertexRoute { url: (model: string) => string; token: () => Promise<string> }
+
+/** Vertex has no "-latest" aliases: a stable Flash model stands in for them. */
+const VERTEX_FALLBACK_MODEL = 'gemini-2.5-flash';
+const vertexModel = (m: string) => (/-latest$/.test(m) ? VERTEX_FALLBACK_MODEL : m);
+
+/** Google Gemini (default content provider). Key: GEMINI_API_KEY secret; optional Vertex route via the service account. */
+export function geminiProvider(apiKey: string | undefined, model: string, vertex?: VertexRoute, opts: { forceVertex?: boolean } = {}): AIProvider {
+  const call = async (input: AIGenerateInput, useModel: string, withThinking: boolean, budget: number, via: 'key' | 'vertex') => {
     const thinking = withThinking ? thinkingConfig(useModel) : undefined;
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(useModel)}:generateContent`, {
+    const target: { url: string; headers: Record<string, string> } = via === 'vertex'
+      ? { url: vertex!.url(vertexModel(useModel)), headers: { authorization: `Bearer ${await vertex!.token()}` } }
+      : { url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(useModel)}:generateContent`, headers: { 'x-goog-api-key': apiKey! } };
+    const res = await fetch(target.url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey! },
+      headers: { 'content-type': 'application/json', ...target.headers },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: input.system }] },
         contents: input.messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
@@ -61,24 +74,35 @@ export function geminiProvider(apiKey: string | undefined, model: string): AIPro
     id: 'gemini',
     label: 'জেমিনি',
     async generate(input: AIGenerateInput) {
-      if (!apiKey) throw new AIProviderError('gemini', 'missing_key');
-      let useModel = model;
-      let withThinking = true;
-      let budget = outputBudget(model, input.maxTokens ?? 1024);
-      for (let attempt = 0; attempt < 4; attempt++) {
-        const r = await call(input, useModel, withThinking, budget);
-        if (r.text && r.finish !== 'MAX_TOKENS') return r.text;
-        // Retired or misspelled model name → the current Flash model.
-        if (r.status === 404 && useModel !== GEMINI_FALLBACK_MODEL) { useModel = GEMINI_FALLBACK_MODEL; budget = outputBudget(useModel, input.maxTokens ?? 1024); continue; }
-        // A model that rejects the thinking settings → ask again without them.
-        if (r.status === 400 && withThinking && /think/i.test(r.error)) { withThinking = false; continue; }
-        // Ran out of room (thinking ate the budget, or a long JSON answer) → once more with plenty of room.
-        if (r.status === 200 && r.finish === 'MAX_TOKENS' && budget < 8192) { budget = 8192; continue; }
-        if (r.error) throw new AIProviderError('gemini', r.error);
-        if (r.text) return r.text; // still cut off after the retry — return what there is
-        throw new AIProviderError('gemini', r.finish ? `empty_response (${r.finish})` : 'empty_response');
+      const viaKey = !!apiKey && !opts.forceVertex;
+      if (!viaKey && !vertex) throw new AIProviderError('gemini', 'missing_key');
+      const run = async (via: 'key' | 'vertex') => {
+        let useModel = model;
+        let withThinking = true;
+        let budget = outputBudget(model, input.maxTokens ?? 1024);
+        for (let attempt = 0; attempt < 4; attempt++) {
+          const r = await call(input, useModel, withThinking, budget, via);
+          if (r.text && r.finish !== 'MAX_TOKENS') return r.text;
+          // Retired or misspelled model name → the current Flash model.
+          if (r.status === 404 && useModel !== GEMINI_FALLBACK_MODEL) { useModel = GEMINI_FALLBACK_MODEL; budget = outputBudget(useModel, input.maxTokens ?? 1024); continue; }
+          // A model that rejects the thinking settings → ask again without them.
+          if (r.status === 400 && withThinking && /think/i.test(r.error)) { withThinking = false; continue; }
+          // Ran out of room (thinking ate the budget, or a long JSON answer) → once more with plenty of room.
+          if (r.status === 200 && r.finish === 'MAX_TOKENS' && budget < 8192) { budget = 8192; continue; }
+          if (r.error) throw new AIProviderError('gemini', `${via === 'vertex' ? 'vertex ' : ''}${r.error}`);
+          if (r.text) return r.text; // still cut off after the retry — return what there is
+          throw new AIProviderError('gemini', r.finish ? `empty_response (${r.finish})` : 'empty_response');
+        }
+        throw new AIProviderError('gemini', 'empty_response');
+      };
+      if (!viaKey) return run('vertex');
+      try {
+        return await run('key');
+      } catch (e) {
+        // The key was refused (invalid, blocked or out of quota) → the same model through the service account.
+        if (vertex && /http_(400|401|403|429)/.test(String((e as Error).message)) && !/think/i.test(String((e as Error).message))) return run('vertex');
+        throw e;
       }
-      throw new AIProviderError('gemini', 'empty_response');
     },
   };
 }

@@ -8,6 +8,7 @@ import { audit } from '../../lib/audit';
 import { clampStr, clientIp, isEmail, normalizeBdPhone, nowIso, parseJson, toInt } from '../../lib/util';
 import { mediaSrc, isHttpUrl } from '../../../../shared/media';
 import { isPrivateKey, revokeStudentSessions } from '../../lib/courses';
+import { driveFileId } from '../../lib/google';
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** Learning order: chapter by chapter, then the lessons inside each chapter. */
@@ -127,7 +128,7 @@ export const courseLessonsDef: ResourceDef = {
     if (v && !isPrivateKey(v) && !isHttpUrl(v) && !mediaSrc(v)) fail(422, 'ভিডিওর জন্য ইউটিউব (আনলিস্টেড) / ভিমিও / ড্রাইভ লিংক দিন অথবা প্রাইভেট ভিডিও আপলোড করুন', 'video_url');
     if (v.startsWith('private/') && !isPrivateKey(v)) fail(422, 'ভিডিও ফাইলটি সঠিক নয় — আবার আপলোড করুন', 'video_url');
     if (d.link_url && !/^https:\/\/\S+$/.test(String(d.link_url))) fail(422, 'লিংক https:// দিয়ে শুরু হতে হবে', 'link_url');
-    if (d.file_key && !isPrivateKey(String(d.file_key))) fail(422, 'ফাইলটি “প্রাইভেট ফাইল আপলোড” দিয়ে দিন', 'file_key');
+    if (d.file_key && !isPrivateKey(String(d.file_key)) && !(/^https:\/\//.test(String(d.file_key)) && driveFileId(String(d.file_key)))) fail(422, 'ফাইলটি “প্রাইভেট ফাইল আপলোড” দিয়ে দিন, অথবা গুগল ড্রাইভের ফাইল লিংক দিন', 'file_key');
     const courseId = d.course_id ?? ex?.course_id;
     if (d.course_id !== undefined && !(await c.env.DB.prepare('SELECT id FROM courses WHERE id = ?').bind(d.course_id).first())) fail(422, 'কোর্স পাওয়া যায়নি', 'course_id');
     const sectionId = d.section_id !== undefined ? d.section_id : ex?.section_id;

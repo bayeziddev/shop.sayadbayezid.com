@@ -60,6 +60,8 @@ export function readOptions(env) {
     pixel: (env.META_PIXEL_ID ?? '1469319801771203').trim(),
     appEnv: env.APP_ENV === 'staging' ? 'staging' : 'production',
     cron: env.ENABLE_CRON === 'true',
+    // owner/name, set by GitHub Actions: lets the Worker start the "Publish storefront" workflow after admin edits.
+    repo: /^[\w.-]+\/[\w.-]+$/.test(env.GITHUB_REPOSITORY || '') ? env.GITHUB_REPOSITORY : '',
   };
 }
 
@@ -302,7 +304,7 @@ ${opts.pagesDomain ? `PUBLIC_SITE_URL = ${toml(`https://${opts.pagesDomain}`)}\n
 PAYMENT_MODE = ${toml(opts.paymentMode)}
 META_PIXEL_ID = ${toml(opts.pixel)}
 META_GRAPH_VERSION = "v21.0"
-
+${opts.repo ? `GITHUB_REPO = ${toml(opts.repo)}\n` : ''}
 [[d1_databases]]
 binding = "DB"
 database_name = ${toml(opts.dbName)}

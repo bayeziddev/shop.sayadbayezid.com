@@ -11,6 +11,8 @@ import { sendMetaEvent } from '../../lib/meta-capi';
 import { getSettings, saveSettings, SETTINGS_DEFAULTS, type SiteSettings } from '../../lib/settings';
 import { registerResources } from './resources';
 import { registerCourseAdmin } from './courses';
+import { PUBLIC_CONTENT, lastRefresh, refreshConfigured, refreshStorefront } from '../../lib/storefront';
+import { CLOUD_SCOPE, DRIVE_SCOPE, GoogleError, driveFileId, driveMeta, googleAccessToken, serviceAccount } from '../../lib/google';
 import { listRows, toCsv, csvResponse, type ResourceDef } from './crud';
 import { changeProjectStatus, confirmPayment, getOrder, getOrderItems, issueReferralCoupon } from '../../lib/orders';
 import { portalToken } from '../../lib/portal-token';
@@ -68,6 +70,14 @@ admin.use('*', async (c, next) => {
   const p = new URL(c.req.url).pathname;
   if (p.endsWith('/auth/login') || p.endsWith('/auth/setup') || p.endsWith('/auth/status')) return next();
   return requireAdmin(c, next);
+});
+
+/* After any successful change to public content (prices, offers, packages, courses …) refresh the public copy. */
+admin.use('*', async (c, next) => {
+  await next();
+  if (c.req.method !== 'GET' && c.res.status < 400 && PUBLIC_CONTENT.test(new URL(c.req.url).pathname)) {
+    c.executionCtx.waitUntil(refreshStorefront(c.env, `${c.req.method} ${new URL(c.req.url).pathname.replace('/api/admin', '')}`));
+  }
 });
 
 admin.post('/auth/logout', async (c) => {
@@ -635,6 +645,72 @@ admin.post('/tracking/test-event', requirePerm('settings.write'), async (c) => {
     user: { ip: clientIp(c.req.raw), userAgent: 'Mozilla/5.0 (admin tracking check)' },
   });
   return ok(c, { ...r, eventId });
+});
+
+/* ---------------- Public storefront refresh (GitHub Pages copy) ---------------- */
+admin.get('/storefront', async (c) => ok(c, { ...refreshConfigured(c.env), pagesDomain: c.env.PUBLIC_SITE_URL || '', last: await lastRefresh(c.env) }));
+admin.post('/storefront/refresh', requirePerm('catalog.write'), async (c) => {
+  const r = await refreshStorefront(c.env, 'manual');
+  if (!r.ok && r.detail === 'no_token') fail(422, 'স্বয়ংক্রিয় আপডেট চালু নেই — GitHub-এ PAGES_REFRESH_TOKEN সিক্রেট যোগ করে ডিপ্লয় আবার চালান (সহায়তা কেন্দ্রে ধাপগুলো আছে)');
+  if (!r.ok && r.detail === 'no_pages_copy') fail(422, 'পাবলিক কপি (GitHub Pages) চালু নেই — সাইট সরাসরি এই সার্ভার থেকেই চলছে, আলাদা আপডেটের দরকার নেই');
+  if (!r.ok) fail(502, `GitHub আপডেট শুরু করেনি (${r.status || 'নেটওয়ার্ক'}${r.detail ? `: ${r.detail}` : ''}) — টোকেনে এই রিপোজিটরির Actions: Read and write অনুমতি আছে কি না দেখুন`);
+  await audit(c.env, c.get('admin').id, 'storefront_refresh', 'settings', null, {}, clientIp(c.req.raw));
+  return ok(c, r);
+});
+
+/* ---------------- Google service account (Drive videos, Gemini via Vertex) ---------------- */
+admin.get('/google', async (c) => {
+  const sa = serviceAccount(c.env);
+  return ok(c, { configured: !!sa, secretSet: !!c.env.GOOGLE_SERVICES_JSON, clientEmail: sa?.client_email || '', projectId: sa?.project_id || '' });
+});
+
+/** Step-by-step check: key → token → (optional) a Drive file → Gemini through Vertex. Nothing secret is returned. */
+admin.post('/google/check', requirePerm('settings.write'), async (c) => {
+  const b = await readJson<{ url?: string; gemini?: boolean }>(c);
+  const sa = serviceAccount(c.env);
+  const steps: { key: string; ok: boolean; text: string }[] = [];
+  const why = (e: unknown) => (e instanceof GoogleError ? e.message : String((e as Error)?.message || e)).slice(0, 220);
+  if (!sa) {
+    steps.push({ key: 'secret', ok: false, text: c.env.GOOGLE_SERVICES_JSON ? 'GOOGLE_SERVICES_JSON আছে কিন্তু এটি সার্ভিস অ্যাকাউন্টের JSON নয় (client_email / private_key পাওয়া যায়নি)' : 'GOOGLE_SERVICES_JSON সিক্রেট সার্ভারে পৌঁছায়নি — GitHub সিক্রেটে যোগ করে ডিপ্লয় আবার চালান' });
+    return ok(c, { steps });
+  }
+  steps.push({ key: 'secret', ok: true, text: `সার্ভিস অ্যাকাউন্ট: ${sa.client_email}` });
+  try {
+    await googleAccessToken(c.env, DRIVE_SCOPE);
+    steps.push({ key: 'token', ok: true, text: 'গুগলে লগইন সফল (টোকেন পাওয়া গেছে)' });
+  } catch (e) {
+    steps.push({ key: 'token', ok: false, text: `গুগল টোকেন দেয়নি — ${why(e)}` });
+    return ok(c, { steps });
+  }
+  const url = clampStr(b.url, 500);
+  if (url) {
+    const id = driveFileId(url);
+    if (!id) steps.push({ key: 'drive', ok: false, text: 'এটি গুগল ড্রাইভের ফাইল লিংক নয়' });
+    else {
+      try {
+        const m = await driveMeta(c.env, id);
+        const mb = m.size ? ` · ${(m.size / 1048576).toFixed(1)} MB` : '';
+        steps.push({ key: 'drive', ok: true, text: `ড্রাইভ ফাইল খোলা যাচ্ছে: “${m.name}” (${m.mimeType}${mb}) — ভর্তি শিক্ষার্থীরা সাইটের ভেতরেই দেখবেন, ড্রাইভ লিংক কেউ পাবে না` });
+      } catch (e) {
+        const st = e instanceof GoogleError ? e.status : 0;
+        steps.push({ key: 'drive', ok: false, text: st === 404 ? `ফাইলটি পাওয়া যায়নি — ড্রাইভে ফাইলটি “Share” করে ${sa.client_email} যোগ করুন (Viewer)` : st === 403 ? `অনুমতি নেই — Google Cloud-এ Google Drive API চালু করুন এবং ফাইলটি ${sa.client_email}-এর সাথে শেয়ার করুন (${why(e)})` : `ড্রাইভ ফাইল খোলা যায়নি — ${why(e)}` });
+      }
+    }
+  }
+  if (b.gemini !== false) {
+    if (!sa.project_id) steps.push({ key: 'gemini', ok: false, text: 'JSON-এ project_id নেই — Vertex AI ব্যবহার করা যাবে না' });
+    else {
+      try {
+        await googleAccessToken(c.env, CLOUD_SCOPE);
+        const text = await buildProvider(c.env, { provider: 'gemini', model: '' }, { forceVertex: true }).generate({ system: 'Reply with one word.', messages: [{ role: 'user', content: 'Say OK' }], maxTokens: 20, temperature: 0 });
+        steps.push({ key: 'gemini', ok: true, text: `সার্ভিস অ্যাকাউন্ট দিয়ে জেমিনি (Vertex AI) কাজ করছে — উত্তর: “${text.trim().slice(0, 40)}”। এপিআই কী সমস্যা করলে এটিই ব্যাকআপ হিসেবে চলবে` });
+      } catch (e) {
+        const m = why(e);
+        steps.push({ key: 'gemini', ok: false, text: /http_403|permission|disabled|not been used/i.test(m) ? `জেমিনি (Vertex AI) চালু নেই — Google Cloud প্রজেক্ট ${sa.project_id}-এ Vertex AI API চালু করুন ও সার্ভিস অ্যাকাউন্টকে “Vertex AI User” রোল দিন (${m})` : `জেমিনি (Vertex AI) উত্তর দেয়নি — ${m}` });
+      }
+    }
+  }
+  return ok(c, { steps });
 });
 
 /* ---------------- Notifications, activity, lookups ---------------- */

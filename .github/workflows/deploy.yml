@@ -149,13 +149,15 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           LEAD_WEBHOOK_URL: ${{ secrets.LEAD_WEBHOOK_URL }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          PAGES_REFRESH_TOKEN: ${{ secrets.PAGES_REFRESH_TOKEN }}
         run: |
           npx wrangler secret list --config worker/wrangler.deploy.toml --format json > existing-secrets.json 2>/dev/null || echo "[]" > existing-secrets.json
           node -e '
             const fs = require("fs");
             const crypto = require("crypto");
             const existing = new Set(JSON.parse(fs.readFileSync("existing-secrets.json", "utf8") || "[]").map((s) => s.name));
-            const names = ["ADMIN_SETUP_TOKEN","SESSION_SECRET","DATA_ENCRYPTION_KEY","META_CAPI_TOKEN","SSLCOMMERZ_STORE_ID","SSLCOMMERZ_STORE_PASSWORD","STRIPE_SECRET_KEY","STRIPE_WEBHOOK_SECRET","GEMINI_API_KEY","OPENAI_API_KEY","RESEND_API_KEY","EMAIL_FROM","ADMIN_ALERT_EMAIL","SMS_API_URL","SMS_API_KEY","SMS_SENDER_ID","WHATSAPP_TOKEN","WHATSAPP_PHONE_NUMBER_ID","WHATSAPP_TEMPLATE","TELEGRAM_BOT_TOKEN","TELEGRAM_CHAT_ID","LEAD_WEBHOOK_URL"];
+            const names = ["ADMIN_SETUP_TOKEN","SESSION_SECRET","DATA_ENCRYPTION_KEY","META_CAPI_TOKEN","SSLCOMMERZ_STORE_ID","SSLCOMMERZ_STORE_PASSWORD","STRIPE_SECRET_KEY","STRIPE_WEBHOOK_SECRET","GEMINI_API_KEY","OPENAI_API_KEY","RESEND_API_KEY","EMAIL_FROM","ADMIN_ALERT_EMAIL","SMS_API_URL","SMS_API_KEY","SMS_SENDER_ID","WHATSAPP_TOKEN","WHATSAPP_PHONE_NUMBER_ID","WHATSAPP_TEMPLATE","TELEGRAM_BOT_TOKEN","TELEGRAM_CHAT_ID","LEAD_WEBHOOK_URL","GOOGLE_SERVICES_JSON","PAGES_REFRESH_TOKEN"];
             const out = Object.fromEntries(names.filter((n) => process.env[n]).map((n) => [n, process.env[n]]));
             // The app cannot run without these two. If neither GitHub nor the Worker has them yet, generate them ONCE.
             // (They are never regenerated afterwards, so encrypted data stays readable.)
