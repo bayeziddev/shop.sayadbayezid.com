@@ -102,7 +102,7 @@ export function fieldHtml(f, v) {
     }
     case 'video': return `<div class="video-field"><label>${label}<input type="text" name="${f.name}" value="${esc(val)}" maxlength="500" placeholder="https://youtu.be/… · facebook.com/…/videos/… · vimeo.com/… · drive.google.com/… · .mp4" data-video-input></label><div class="media-btns">${f.private ? `<label class="btn sm">🔒 প্রাইভেট ভিডিও আপলোড<input type="file" accept="video/mp4,video/webm,.m4v" data-upload-to-input="${f.name}" data-private="1" hidden></label>` : `<label class="btn sm">ভিডিও ফাইল আপলোড<input type="file" accept="video/mp4,video/webm" data-upload-to-input="${f.name}" hidden></label>`}<span class="small muted" data-video-kind>${videoKind(val)}</span></div></div>`;
     // Course material kept private: only an enrolled student can download it (never a public /media link).
-    case 'privatefile': return `<div class="video-field"><label>${label}<input type="text" name="${f.name}" value="${esc(val)}" maxlength="300" placeholder="আপলোড করলে নিজে থেকেই বসবে" readonly data-private-file></label><div class="media-btns"><label class="btn sm">🔒 প্রাইভেট ফাইল আপলোড<input type="file" accept=".pdf,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.webp,.mp3,.m4a,.mp4,.webm" data-upload-to-input="${f.name}" data-private="1" hidden></label><button type="button" class="btn sm" data-clear-input="${f.name}">সরান</button><span class="small muted">পিডিএফ, জিপ, ডক, এক্সেল, স্লাইড, অডিও — সর্বোচ্চ ৯৫ মেগাবাইট</span></div></div>`;
+    case 'privatefile': return `<div class="video-field"><label>${label}<input type="text" name="${f.name}" value="${esc(val)}" maxlength="300" placeholder="${f.allowLink ? 'আপলোড করুন অথবা https://drive.google.com/… লিংক দিন' : 'আপলোড করলে নিজে থেকেই বসবে'}" ${f.allowLink ? '' : 'readonly'} data-private-file></label><div class="media-btns"><label class="btn sm">🔒 প্রাইভেট ফাইল আপলোড<input type="file" accept=".pdf,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.webp,.mp3,.m4a,.mp4,.webm" data-upload-to-input="${f.name}" data-private="1" hidden></label><button type="button" class="btn sm" data-clear-input="${f.name}">সরান</button><span class="small muted">পিডিএফ, জিপ, ডক, এক্সেল, স্লাইড, অডিও — সর্বোচ্চ ৯৫ মেগাবাইট</span></div></div>`;
     case 'links': {
       const arr = Array.isArray(val) ? val : (() => { try { return JSON.parse(val || '[]'); } catch { return []; } })();
       return `<label>${label} <small>(প্রতি লাইনে: লেবেল | https://লিংক)</small><textarea name="${f.name}" rows="${f.rows || 3}" data-links>${esc(arr.map((l) => `${l.label} | ${l.url}`).join('\n'))}</textarea></label>`;
@@ -291,11 +291,11 @@ export async function listView(root, cfg) {
   const st = { page: 1, q: '', filters: { ...(cfg.defaultFilters || {}) } };
   const canWrite = !cfg.writePerm || can(cfg.writePerm);
   root.innerHTML = `
-    <div class="page-head"><h1>${esc(cfg.title)}</h1><div class="actions">
+    <div class="page-head">${cfg.embedded ? `<h2>${esc(cfg.title)}</h2>` : `<h1>${esc(cfg.title)}</h1>`}<div class="actions">
       ${cfg.exportUrl && can('export') ? `<a class="btn" href="/api/admin${cfg.exportUrl}" download>সিএসভি এক্সপোর্ট</a>` : ''}
       ${(cfg.fields || cfg.onCreate) && canWrite && cfg.allowCreate !== false ? `<button class="btn primary" data-new>+ নতুন ${esc(cfg.singular || '')}</button>` : ''}
     </div></div>
-    ${cfg.intro ? `<p class="muted">${cfg.intro}</p>` : ''}
+    ${cfg.intro ? `<p class="intro">${cfg.intro}</p>` : ''}
     <div class="toolbar">
       ${cfg.search !== false ? '<input type="search" placeholder="খুঁজুন…" aria-label="খুঁজুন" data-q>' : ''}
       ${(cfg.filters || []).map((f) => `<select data-filter="${f.name}" aria-label="${esc(f.label)}"><option value="">${esc(f.label)}: সব</option>${(typeof f.options === 'function' ? f.options() : f.options).map(([k, l]) => `<option value="${esc(k)}" ${String(st.filters[f.name] ?? '') === String(k) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`).join('')}
@@ -309,7 +309,7 @@ export async function listView(root, cfg) {
     try {
       const r = await api(`${cfg.endpoint}?${qs}`);
       const tbody = $('[data-rows]', root);
-      tbody.innerHTML = r.items.length ? r.items.map((row) => `<tr data-id="${row.id}">${cfg.columns.map((c) => `<td>${c.render ? c.render(row) : esc(row[c.key])}</td>`).join('')}
+      tbody.innerHTML = r.items.length ? r.items.map((row) => `<tr data-id="${row.id}">${cfg.columns.map((c) => `<td data-label="${esc(c.label || '')}">${c.render ? c.render(row) : esc(row[c.key])}</td>`).join('')}
         <td><div class="row-actions">${(cfg.rowActions || []).map((a) => (!a.perm || can(a.perm)) && (!a.show || a.show(row)) ? `<button class="btn sm" data-act="${a.key}">${esc(a.label)}</button>` : '').join('')}
         ${cfg.onOpen ? '<button class="btn sm" data-open>খুলুন</button>' : ''}
         ${cfg.fields && canWrite && !cfg.onOpen ? '<button class="btn sm" data-edit>সম্পাদনা</button>' : ''}

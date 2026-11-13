@@ -1,6 +1,7 @@
 import type { Env } from '../../env';
 import { maskSecret } from '../util';
-import { geminiProvider } from './gemini';
+import { geminiProvider, type VertexRoute } from './gemini';
+import { CLOUD_SCOPE, googleAccessToken, serviceAccount, vertexUrl } from '../google';
 import { openaiProvider } from './openai';
 import { workersAiProvider } from './workers-ai';
 import type { AIGenerateInput, AIProvider } from './types';
@@ -37,10 +38,17 @@ export async function getAIConfig(env: Env, purpose: 'content' | 'chat'): Promis
   return env.DB.prepare('SELECT * FROM ai_provider_configs WHERE purpose = ?').bind(purpose).first<AIConfigRow>();
 }
 
-export function buildProvider(env: Env, cfg: Pick<AIConfigRow, 'provider' | 'model'>): AIProvider {
+/** Gemini through Vertex AI with the Google service account, when one with a project id is configured. */
+function vertexRoute(env: Env): VertexRoute | undefined {
+  const sa = serviceAccount(env);
+  if (!sa?.project_id) return undefined;
+  return { url: (model) => vertexUrl(sa, model), token: () => googleAccessToken(env, CLOUD_SCOPE) };
+}
+
+export function buildProvider(env: Env, cfg: Pick<AIConfigRow, 'provider' | 'model'>, opts: { forceVertex?: boolean } = {}): AIProvider {
   switch (cfg.provider) {
     case 'gemini':
-      return geminiProvider(env.GEMINI_API_KEY, cfg.model || PROVIDER_DEFAULT_MODELS.gemini);
+      return geminiProvider(env.GEMINI_API_KEY, cfg.model || PROVIDER_DEFAULT_MODELS.gemini, vertexRoute(env), opts);
     case 'openai':
       return openaiProvider(env.OPENAI_API_KEY, cfg.model || PROVIDER_DEFAULT_MODELS.openai);
     case 'workers_ai':
@@ -95,5 +103,6 @@ export function keyStatus(env: Env, provider: AIConfigRow['provider']): { config
   const name = PROVIDER_SECRETS[provider];
   if (!name) return { configured: !!env.AI, hint: env.AI ? 'বাইন্ডিং সংযুক্ত' : '' };
   const v = env[name] as string | undefined;
+  if (!v && provider === 'gemini' && serviceAccount(env)?.project_id) return { configured: true, hint: 'সার্ভিস অ্যাকাউন্ট (Vertex AI)' };
   return { configured: !!v, hint: maskSecret(v) };
 }

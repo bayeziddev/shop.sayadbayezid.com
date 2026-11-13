@@ -4,11 +4,14 @@ const DESIGN_KINDS = [['hero', 'হোমপেজ / হিরো'], ['header', 
 import * as V from './views.js';
 
 const app = $('#app');
-const NAV = [
-  ['dashboard', 'ড্যাশবোর্ড', '◧'], ['preview', 'সাইট প্রিভিউ ও এডিট', '👁'], ['categories', 'ক্যাটাগরি', '▦'], ['packages', 'প্যাকেজ', '◫'], ['designs', 'ডিজাইন গ্যালারি', '▤'], ['portfolio', 'সফল ডেলিভারি', '✓'], ['courses', 'কোর্স', '🎓'], ['course-categories', 'কোর্স ক্যাটাগরি', '▧'], ['students', 'শিক্ষার্থী', '👤'], ['enrollments', 'কোর্স এক্সেস', '🔑'], ['landing-pages', 'ল্যান্ডিং পেজ', '⬚'], ['tracking', 'ট্র্যাকিং ও বিজ্ঞাপন', '◎'],
-  ['orders', 'অর্ডার / প্রজেক্ট', '🧾'], ['leads', 'লিড', '☏'], ['coupons', 'কুপন', '%'], ['offers', 'ক্যাটাগরি অফার', '⏱'], ['banners', 'ব্যানার / পপআপ', '▭'],
-  ['faqs', 'প্রশ্নোত্তর', '?'], ['reviews', 'রিভিউ', '★'], ['chats', 'চ্যাট', '💬'], ['chat-settings', 'চ্যাট সেটিংস', '⚙'], ['ai-settings', 'এআই সেটিংস', '✨'],
-  ['reports', 'রিপোর্ট', '📈'], ['staff', 'স্টাফ ও ভূমিকা', '👥'], ['activity', 'অ্যাক্টিভিটি লগ', '≡'], ['settings', 'সিস্টেম সেটিংস', '⚒'], ['help', 'সহায়তা কেন্দ্র', 'ⓘ'],
+/** The menu, in groups — the same order an owner works in: sell → what you sell → promote → set up. */
+const NAV_GROUPS = [
+  { items: [['dashboard', 'ড্যাশবোর্ড', '◧'], ['preview', 'সাইট দেখুন ও এডিট', '👁']] },
+  { title: 'বিক্রি', items: [['orders', 'অর্ডার', '🧾'], ['leads', 'লিড', '☏'], ['chats', 'চ্যাট', '💬'], ['reports', 'রিপোর্ট', '📈']] },
+  { title: 'ওয়েবসাইট প্যাকেজ', items: [['packages', 'প্যাকেজ ও দাম', '◫'], ['categories', 'ক্যাটাগরি', '▦'], ['designs', 'ডিজাইন গ্যালারি', '▤'], ['portfolio', 'সফল ডেলিভারি', '✓']] },
+  { title: 'কোর্স', items: [['courses', 'কোর্স ও লেসন', '🎓'], ['course-categories', 'কোর্স ক্যাটাগরি', '▧'], ['students', 'শিক্ষার্থী', '👤'], ['enrollments', 'কোর্স এক্সেস', '🔑']] },
+  { title: 'মার্কেটিং', items: [['offers', 'ক্যাটাগরি অফার', '⏱'], ['coupons', 'কুপন', '🏷'], ['banners', 'ব্যানার / পপআপ', '▭'], ['landing-pages', 'ল্যান্ডিং পেজ', '⬚'], ['tracking', 'ট্র্যাকিং ও বিজ্ঞাপন', '◎'], ['reviews', 'রিভিউ', '★'], ['faqs', 'প্রশ্নোত্তর', '?']] },
+  { title: 'সেটিংস', items: [['settings', 'সাইট সেটিংস', '⚙'], ['chat-settings', 'চ্যাট সেটিংস', '💭'], ['ai-settings', 'এআই ও গুগল', '✨'], ['staff', 'স্টাফ ও ভূমিকা', '👥'], ['activity', 'অ্যাক্টিভিটি লগ', '≡'], ['help', 'সহায়তা', 'ⓘ']] },
 ];
 const ROLE = { super_admin: 'সুপার অ্যাডমিন', sales_support: 'সেলস / সাপোর্ট', project_manager: 'প্রজেক্ট ম্যানেজার', viewer: 'শুধু দেখার অনুমতি' };
 
@@ -37,27 +40,54 @@ async function loginScreen() {
 function shell() {
   app.className = '';
   const collapsed = localStorage.getItem('adm_collapsed') === '1';
+  const initial = (state.me.name || 'A').trim().charAt(0).toUpperCase();
+  const link = ([k, l, ic]) => `<a href="#/${k}" data-nav="${k}" title="${esc(l)}"><span class="ic" aria-hidden="true">${ic}</span><span class="lbl">${esc(l)}</span>${k === 'leads' || k === 'chats' ? `<span class="badge-n" data-count="${k}" hidden></span>` : ''}</a>`;
   app.innerHTML = `<div class="shell ${collapsed ? 'collapsed' : ''}">
-    <nav class="side" aria-label="অ্যাডমিন মেনু"><div class="brand"><i>&lt;/&gt;</i><b>Cwb Agency</b></div>
-      ${NAV.map(([k, l, ic]) => `<a href="#/${k}" data-nav="${k}"><span class="ic" aria-hidden="true">${ic}</span><span class="lbl">${esc(l)}</span>${k === 'leads' || k === 'chats' ? `<span class="badge-n" data-count="${k}" hidden></span>` : ''}</a>`).join('')}
-      <a href="#" class="collapse-btn" data-collapse><span class="ic">⇆</span><span class="lbl">মেনু ছোট করুন</span></a></nav>
-    <main class="main"><div class="topbar"><button class="btn icon" data-open-side aria-label="মেনু">☰</button><button class="btn icon" data-open-right aria-label="নোটিফিকেশন">🔔 <span data-unread-top></span></button></div><div data-view></div></main>
-    <aside class="right" aria-label="দ্রুত তথ্য">
-      <div style="display:flex;gap:.5rem;align-items:center">
-        <form data-search style="flex:1"><input type="search" name="q" placeholder="অর্ডার, লিড খুঁজুন…" aria-label="খুঁজুন"></form>
-        <div class="profile"><button class="btn icon" data-profile aria-haspopup="menu">👤</button><div class="profile-menu" hidden data-profile-menu>
-          <div style="padding:.5rem .7rem"><b>${esc(state.me.name)}</b><br><span class="small muted">${esc(ROLE[state.me.role])}</span></div>
-          <button data-theme>থিম পরিবর্তন</button><button data-pw>পাসওয়ার্ড পরিবর্তন</button><a href="/" target="_blank" rel="noopener">সাইট দেখুন ↗</a><button data-logout>লগআউট</button></div></div>
-      </div>
-      <section><div style="display:flex;justify-content:space-between;align-items:center"><h3>নোটিফিকেশন <span data-unread class="pill info" hidden></span></h3><button class="btn sm" data-mark-read>সব পড়া হয়েছে</button></div><ul class="notif-list" data-notifs><li class="muted">লোড হচ্ছে…</li></ul></section>
-      <section><h3>স্টাফ</h3><ul class="staff-list" data-staff></ul></section>
-    </aside></div>`;
+    <nav class="side" aria-label="অ্যাডমিন মেনু">
+      <a class="brand" href="#/dashboard"><i>&lt;/&gt;</i><b>Cwb Agency</b></a>
+      ${NAV_GROUPS.map((g) => `<div class="nav-group">${g.title ? `<h6>${esc(g.title)}</h6>` : ''}${g.items.map(link).join('')}</div>`).join('')}
+      <div class="side-foot"><a href="/" target="_blank" rel="noopener"><span class="ic" aria-hidden="true">↗</span><span class="lbl">পাবলিক সাইট দেখুন</span></a><a href="#" class="collapse-btn" data-collapse><span class="ic" aria-hidden="true">⇆</span><span class="lbl">মেনু ছোট করুন</span></a></div>
+    </nav>
+    <div class="scrim" data-close-side></div>
+    <div class="content">
+      <header class="topbar">
+        <button class="btn icon ghost menu-btn" data-open-side aria-label="মেনু খুলুন">☰</button>
+        <form data-search class="search"><input type="search" name="q" placeholder="অর্ডার নম্বর, নাম বা ফোন খুঁজুন…" aria-label="খুঁজুন"></form>
+        <div class="spacer"></div>
+        <div class="top-actions">
+          ${can('catalog.write') ? '<button class="btn sm hide-sm" data-site-refresh title="দাম, অফার বা লেখা বদলানোর পর পাবলিক সাইট এখনই আপডেট করুন">↻ সাইট আপডেট</button>' : ''}
+          <div class="pop-wrap"><button class="btn icon ghost" data-bell aria-label="নোটিফিকেশন" aria-haspopup="true">🔔<span class="bell-count" data-unread-top></span></button>
+            <div class="pop" data-notif-pop hidden>
+              <div class="pop-head"><h3>নোটিফিকেশন <span data-unread class="pill info" hidden></span></h3><button class="btn sm" data-mark-read>সব পড়া হয়েছে</button></div>
+              <ul class="notif-list" data-notifs><li class="muted">লোড হচ্ছে…</li></ul>
+              <div><h3>স্টাফ</h3><ul class="staff-list" data-staff></ul></div>
+            </div></div>
+          <div class="pop-wrap"><button class="avatar" data-profile aria-haspopup="menu" aria-label="প্রোফাইল">${esc(initial)}</button>
+            <div class="profile-menu" hidden data-profile-menu>
+              <div class="who"><b>${esc(state.me.name)}</b><br><span class="small muted">${esc(ROLE[state.me.role])}</span></div>
+              <button data-theme>🌓 আলো / অন্ধকার থিম</button><button data-pw>🔒 পাসওয়ার্ড পরিবর্তন</button><a href="/" target="_blank" rel="noopener">↗ পাবলিক সাইট দেখুন</a><button data-logout>⎋ লগআউট</button>
+            </div></div>
+        </div>
+      </header>
+      <main class="main" data-view></main>
+    </div></div>`;
 
+  const side = $('.side', app);
+  const closePops = () => { $('[data-notif-pop]', app).hidden = true; $('[data-profile-menu]', app).hidden = true; };
   $('[data-collapse]', app).addEventListener('click', (e) => { e.preventDefault(); const s = $('.shell', app); s.classList.toggle('collapsed'); localStorage.setItem('adm_collapsed', s.classList.contains('collapsed') ? '1' : '0'); });
-  $('[data-open-side]', app).addEventListener('click', () => $('.side', app).classList.toggle('open'));
-  $('[data-open-right]', app).addEventListener('click', () => $('.right', app).classList.toggle('open'));
-  $('[data-profile]', app).addEventListener('click', () => { const m = $('[data-profile-menu]', app); m.hidden = !m.hidden; });
-  $('[data-theme]', app).addEventListener('click', () => { const t = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'; document.documentElement.dataset.theme = t; localStorage.setItem('theme', t); });
+  $('[data-open-side]', app).addEventListener('click', () => side.classList.toggle('open'));
+  $('[data-close-side]', app).addEventListener('click', () => side.classList.remove('open'));
+  $('[data-bell]', app).addEventListener('click', (e) => { e.stopPropagation(); const p = $('[data-notif-pop]', app); const show = p.hidden; closePops(); p.hidden = !show; });
+  $('[data-profile]', app).addEventListener('click', (e) => { e.stopPropagation(); const m = $('[data-profile-menu]', app); const show = m.hidden; closePops(); m.hidden = !show; });
+  document.addEventListener('click', (e) => { if (!e.target.closest('.pop-wrap')) closePops(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closePops(); side.classList.remove('open'); } });
+  $('[data-site-refresh]', app)?.addEventListener('click', async (e) => {
+    const b = e.currentTarget;
+    b.disabled = true;
+    try { await api('/storefront/refresh', { method: 'POST', body: {} }); toast('পাবলিক সাইট আপডেট শুরু হয়েছে — ১–২ মিনিটে নতুন দাম ও লেখা দেখা যাবে'); } catch (err) { toast(err.message, true); }
+    b.disabled = false;
+  });
+  $('[data-theme]', app).addEventListener('click', () => { const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = t; try { localStorage.setItem('adm_theme', t); } catch {} });
   $('[data-logout]', app).addEventListener('click', async () => { await api('/auth/logout', { method: 'POST', body: {} }).catch(() => {}); location.hash = '#/login'; boot(); });
   $('[data-pw]', app).addEventListener('click', () => openForm({ title: 'পাসওয়ার্ড পরিবর্তন', fields: [{ name: 'current', label: 'বর্তমান পাসওয়ার্ড', inputType: 'password', required: true }, { name: 'next', label: 'নতুন পাসওয়ার্ড (কমপক্ষে ১০ অক্ষর)', inputType: 'password', required: true }], onSubmit: (d) => api('/auth/password', { method: 'POST', body: d }) }));
   $('[data-mark-read]', app).addEventListener('click', async () => { await api('/notifications/read', { method: 'POST', body: {} }); refreshSidebar(); });
@@ -307,7 +337,9 @@ async function route() {
   if (!$('.shell')) shell();
   $$('[data-nav]', app).forEach((a) => a.classList.toggle('active', a.dataset.nav === name));
   $('.side', app).classList.remove('open');
-  $('.right', app).classList.remove('open');
+  $('[data-notif-pop]', app).hidden = true;
+  $('[data-profile-menu]', app).hidden = true;
+  window.scrollTo(0, 0);
   const view = $('[data-view]', app);
   const fresh = view.cloneNode(false); // drop old listeners
   view.replaceWith(fresh);

@@ -3,7 +3,7 @@ import type { PublicPackage, CouponRow, CategoryRow } from '../lib/catalog';
 import { mediaUrl } from '../lib/catalog';
 import { taka, bnDigits, bnDate } from '../lib/util';
 import {
-  browserFrame, phoneFrame, packageCard, priceBlock, liveOffer, countdown, offerBadge, couponChip, couponsFor, reviewCard, faqList, leadForm, stars,
+  browserFrame, phoneFrame, packageCard, priceBlock, liveOffer, currentPrice, offerSlot, countdown, offerBadge, couponChip, couponsFor, reviewCard, faqList, leadForm, stars,
   demoLink, videoPlayer, pointCards, designCard, portfolioCard, shotCaption, isTallShot, tierLabel, DESIGN_KINDS, problemGrid, roiCalculator, catalogBrowser,
   type ReviewView, type DesignView, type PortfolioView,
 } from './components';
@@ -263,7 +263,8 @@ export function packagePage(p: PublicPackage, d: PackagePageData): Raw {
     ['features', 'সব ফিচার', true], ['video', 'ভিডিও', !!p.video], ['screens', 'স্ক্রিনশট', !p.tour.length && shots.length > 1],
     ['why', 'কেন আমরা', whyUs.length > 0], ['reviews', 'রিভিউ', true], ['faq', 'প্রশ্নোত্তর', d.faqs.length > 0],
   ];
-  const orderLabel = html`এখনই অর্ডার করুন — <span data-cfg="total-inline">${taka(p.basePrice)}</span>`;
+  const price = currentPrice(p, d.now); // with a live offer: the discounted price, everywhere on the page
+  const orderLabel = html`এখনই অর্ডার করুন — <span data-cfg="total-inline">${taka(price)}</span>`;
   return html`
 <section class="section pkg-detail" data-edit="package:${p.id}">
   <div class="container">
@@ -285,7 +286,7 @@ export function packagePage(p: PublicPackage, d: PackagePageData): Raw {
 
       <aside class="pkg-right">
         <form class="card configurator" data-configurator>
-          <div class="pkg-tags"><span class="badge">${p.categoryName || tierLabel(p.tier)}</span>${offer ? offerBadge(offer) : ''}${avg ? html`<span class="badge">${stars(avg)} ${bnDigits(d.reviews.length)}</span>` : ''}</div>
+          <div class="pkg-tags"><span class="badge">${p.categoryName || tierLabel(p.tier)}</span>${offerSlot(p, d.now)}${avg ? html`<span class="badge">${stars(avg)} ${bnDigits(d.reviews.length)}</span>` : ''}</div>
           <h1>${p.name}</h1>
           <p class="muted">${p.shortDescription}</p>
           ${offer?.endsAt ? countdown(offer.endsAt, offer.title || 'অফার শেষ হবে') : ''}
@@ -382,13 +383,13 @@ ${d.faqs.length ? html`<section class="section-sm" id="faq" data-edit="faqs:${p.
 <section class="section-sm"><div class="container">
   <div class="cta-band mesh">
     <div><h2>আপনার ব্যবসার জন্য এই সাইটটি চান?</h2><p>আজ অর্ডার করুন — পেমেন্টের পর তথ্য দিলেই কাজ শুরু।</p></div>
-    <div class="cta-actions">${soon ? html`<a class="btn btn-light btn-lg" href="/quote?package=${p.slug}">আগ্রহ জানান</a>` : html`<button type="button" class="btn btn-light btn-lg" data-order-now-proxy>এখনই অর্ডার করুন — ${taka(p.basePrice)}</button>`}${demoLink(p, p.demoUrl, 'আগে ডেমো দেখুন', 'btn btn-outline-light btn-lg')}</div>
+    <div class="cta-actions">${soon ? html`<a class="btn btn-light btn-lg" href="/quote?package=${p.slug}">আগ্রহ জানান</a>` : html`<button type="button" class="btn btn-light btn-lg" data-order-now-proxy>এখনই অর্ডার করুন — <span data-live-total="${p.id}">${taka(price)}</span></button>`}${demoLink(p, p.demoUrl, 'আগে ডেমো দেখুন', 'btn btn-outline-light btn-lg')}</div>
   </div>
 </div></section>
 
 ${d.related.length ? html`<section class="section-sm"><div class="container"><h2>এই ধরনের আরও সাইট</h2><div class="pkg-grid">${d.related.map((r) => packageCard(r, d.coupons, d.now))}</div></div></section>` : ''}
 
-${soon ? '' : html`<div class="sticky-cta" data-sticky-cta hidden><div><strong>${taka(p.basePrice)}</strong><span class="small muted">${p.name}</span></div><button type="button" class="btn btn-primary" data-order-now-proxy>অর্ডার করুন</button></div>`}
+${soon ? '' : html`<div class="sticky-cta" data-sticky-cta hidden><div><strong data-live-total="${p.id}">${taka(price)}</strong><span class="small muted">${p.name}</span></div><button type="button" class="btn btn-primary" data-order-now-proxy>অর্ডার করুন</button></div>`}
 ${jsonScript('pkg-data', p)}`;
 }
 

@@ -1,0 +1,34 @@
+name: Check Google service account
+
+# Verifies GOOGLE_SERVICES_JSON: the key, a Google token, which Drive files are shared with the account
+# (and that a test file streams), and Gemini through Vertex AI. Output has no secrets, names or links.
+# Run it from the Actions tab (optionally with a Drive file id), or it runs when this check itself changes.
+on:
+  workflow_dispatch:
+    inputs:
+      drive_file_id:
+        description: 'Google Drive file id to test (the part after /file/d/), optional'
+        required: false
+  push:
+    branches: ['claude/**']
+    paths: ['scripts/google-check.mjs', '.github/workflows/google-check.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Check the service account
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          DRIVE_FILE_ID: ${{ inputs.drive_file_id }}
+          # The course video the owner shared for this check, matched by hash so its id is not published.
+          DRIVE_FILE_SHA256: 5e4ba2a322fb1970ddbe8ab8c7136918fd5ac4176d57f4620600b81641794c6f
+        run: node scripts/google-check.mjs

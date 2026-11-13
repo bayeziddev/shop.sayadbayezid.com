@@ -3,6 +3,7 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import type { AppBindings, Env } from '../env';
 import { mediaSrc, parseVideo, titledLines, type VideoSource } from '../../../shared/media';
 import { nowIso, parseJson, randomToken, sha256Hex } from './util';
+import { driveFileId } from './google';
 
 /* ---------------- Rows ---------------- */
 export interface CourseCategoryRow { id: number; slug: string; name: string; description: string; icon: string; image_key: string | null; is_active: number; sort_order: number }
@@ -89,21 +90,28 @@ export function groupLessons(sections: SectionRow[], lessons: LessonRow[]): { se
 
 /** A private upload (private/courses/…) plays through the access-checked /learn/video route; anything else as usual. */
 export const isPrivateKey = (v: string) => /^private\/courses\/[\w./-]+$/.test(v) && !v.includes('..');
-export function lessonVideo(l: Pick<LessonRow, 'id' | 'video_url'>, base = '') {
+/**
+ * `drive`: a Google service account is configured, so a Google Drive link is played through the Worker
+ * (/learn/video) — the Drive file can stay private (shared only with the service account) and its link
+ * never reaches the browser.
+ */
+export function lessonVideo(l: Pick<LessonRow, 'id' | 'video_url'>, base = '', drive = false) {
   if (!l.video_url) return null;
-  if (isPrivateKey(l.video_url)) return { kind: 'file' as const, src: `${base.replace(/\/$/, '')}/learn/video/${l.id}` };
+  const proxied = { kind: 'file' as const, src: `${base.replace(/\/$/, '')}/learn/video/${l.id}` };
+  if (isPrivateKey(l.video_url)) return proxied;
   if (l.video_url.startsWith('private/')) return null;
+  if (drive && driveFileId(l.video_url) && /^https?:/.test(l.video_url)) return proxied;
   return parseVideo(l.video_url);
 }
 
 /** `base`: the Worker origin, so a private preview video also plays from the static (Pages) copy of the page. */
-export function publicCurriculum(sections: SectionRow[], lessons: LessonRow[], base = ''): PublicSection[] {
+export function publicCurriculum(sections: SectionRow[], lessons: LessonRow[], base = '', drive = false): PublicSection[] {
   return groupLessons(sections, lessons).map((g) => ({
     id: g.section?.id ?? 0,
     title: g.section?.title || 'অন্যান্য লেসন',
     lessons: g.lessons.map((l) => ({
       id: l.id, title: l.title, kind: l.kind, durationText: l.duration_text, isPreview: !!l.is_preview,
-      preview: l.is_preview && l.kind === 'video' ? lessonVideo(l, base) : null,
+      preview: l.is_preview && l.kind === 'video' ? lessonVideo(l, base, drive) : null,
     })),
   }));
 }
@@ -170,10 +178,10 @@ export async function grantCourseOrder(env: Env, orderId: number): Promise<numbe
 }
 
 /* ---------------- Lesson content (enrolled students and previews only) ---------------- */
-export function lessonContent(l: LessonRow) {
+export function lessonContent(l: LessonRow, drive = false) {
   return {
     id: l.id, title: l.title, kind: l.kind, durationText: l.duration_text, body: l.body,
-    video: lessonVideo(l),
+    video: lessonVideo(l, '', drive),
     link: /^https:\/\/\S+$/.test(l.link_url) ? l.link_url : '',
     hasFile: !!l.file_key,
   };

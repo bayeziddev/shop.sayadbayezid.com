@@ -9,6 +9,7 @@ import { readAttribution } from '../lib/attribution';
 import { sendMetaEvent } from '../lib/meta-capi';
 import { notifyAdmins } from '../lib/audit';
 import { getOrder, newOrderNumber, confirmPayment } from '../lib/orders';
+import { driveFetch, driveFileId, driveMeta, serviceAccount } from '../lib/google';
 import { portalToken } from '../lib/portal-token';
 import { availableMethods, startPayment } from './orders';
 import { layout } from '../views/layout';
@@ -55,7 +56,7 @@ async function coursePageResponse(c: Context<AppBindings>, bare: boolean) {
       // Same ViewContent as packages (browser pixel + server CAPI with this event id), marked as a course.
       pageEvent: { name: 'ViewContent', eventId, customData: { content_ids: [`course-${course.id}`], content_type: 'product', content_name: course.title, content_category: `কোর্স: ${course.categoryName}`, value: course.price, currency: 'BDT' } },
     }),
-    CV.coursePage(course, publicCurriculum(sections, lessons, c.env.SITE_URL), { enrollUrl: `/enroll/${course.slug}`, whatsapp: await whatsapp(c.env), studentUrl: studentUrl(c), notEnrolled: c.req.query('not_enrolled') === '1' }),
+    CV.coursePage(course, publicCurriculum(sections, lessons, c.env.SITE_URL, !!serviceAccount(c.env)), { enrollUrl: `/enroll/${course.slug}`, whatsapp: await whatsapp(c.env), studentUrl: studentUrl(c), notEnrolled: c.req.query('not_enrolled') === '1' }),
   );
 }
 courses.get('/course/:slug', (c) => coursePageResponse(c, false));
@@ -264,7 +265,7 @@ async function learn(c: Context<AppBindings>) {
     CV.learnPage({
       course: publicCourse(row, ordered.length),
       sections: groups.map((g) => ({ title: g.section?.title || 'অন্যান্য লেসন', lessons: g.lessons.map((l) => ({ id: l.id, title: l.title, kind: l.kind, durationText: l.duration_text, done: doneIds.has(l.id) })) })),
-      current: lessonContent(current), currentDone: doneIds.has(current.id),
+      current: lessonContent(current, !!serviceAccount(c.env)), currentDone: doneIds.has(current.id),
       prevId: ordered[i - 1]?.id ?? null, nextId: ordered[i + 1]?.id ?? null,
       done: ordered.filter((l) => doneIds.has(l.id)).length, total: ordered.length,
     }),
@@ -274,11 +275,14 @@ async function learn(c: Context<AppBindings>) {
 /** A lesson's private file, streamed only to an enrolled student (or anyone, for a free preview lesson). */
 courses.get('/learn/file/:lesson{[0-9]+}', async (c) => {
   const l = await c.env.DB.prepare('SELECT * FROM course_lessons WHERE id = ? AND is_active = 1').bind(toInt(c.req.param('lesson'))).first<LessonRow>();
-  if (!l || !l.file_key || !c.env.MEDIA) return notFound(c);
+  const driveId = l && serviceAccount(c.env) && /^https?:/.test(l.file_key) ? driveFileId(l.file_key) : null;
+  if (!l || !l.file_key || (!driveId && !c.env.MEDIA)) return notFound(c);
   if (!l.is_preview) {
     const st = await currentStudent(c);
     if (!st || !(await activeEnrollment(c.env, st.id, l.course_id))) return c.text('এই ফাইলটি শুধু ভর্তি হওয়া শিক্ষার্থীদের জন্য', 403);
   }
+  if (driveId) return driveResponse(c, driveId, null, 'attachment');
+  if (!c.env.MEDIA) return notFound(c);
   const obj = await c.env.MEDIA.get(l.file_key);
   if (!obj) return notFound(c);
   const headers = new Headers();
@@ -290,15 +294,48 @@ courses.get('/learn/file/:lesson{[0-9]+}', async (c) => {
   return new Response(obj.body, { headers });
 });
 
+/**
+ * A Google Drive file shared only with the service account, streamed through the Worker. Status, length and
+ * Content-Range come from Google (so seeking works); the Drive link and the token stay on the server.
+ */
+async function driveResponse(c: Context<AppBindings>, id: string, range: string | null | undefined, disposition: 'inline' | 'attachment') {
+  try {
+    const upstream = await driveFetch(c.env, id, range);
+    if (!upstream.ok && upstream.status !== 206) {
+      console.error('drive stream failed', upstream.status);
+      return c.text('ফাইলটি খোলা যায়নি — একটু পরে আবার চেষ্টা করুন, সমস্যা থাকলে আমাদের জানান।', 502);
+    }
+    const headers = new Headers();
+    for (const h of ['content-type', 'content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
+      const v = upstream.headers.get(h);
+      if (v) headers.set(h, v);
+    }
+    if (!headers.has('accept-ranges')) headers.set('accept-ranges', 'bytes');
+    headers.set('cache-control', 'private, no-store');
+    headers.set('x-robots-tag', 'noindex');
+    if (disposition === 'attachment') {
+      const name = (await driveMeta(c.env, id).catch(() => null))?.name || 'file';
+      headers.set('content-disposition', `attachment; filename="${name.replace(/[^\w.-]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(name)}`);
+    } else headers.set('content-disposition', 'inline');
+    return new Response(upstream.body, { status: upstream.status, headers });
+  } catch (e) {
+    console.error('drive stream error', (e as Error).message);
+    return c.text('ফাইলটি খোলা যায়নি — একটু পরে আবার চেষ্টা করুন।', 502);
+  }
+}
+
 /** Privately uploaded lesson video: streamed (with Range for seeking) only to an enrolled student, or for a free preview. */
 courses.get('/learn/video/:lesson{[0-9]+}', async (c) => {
   const l = await c.env.DB.prepare('SELECT * FROM course_lessons WHERE id = ? AND is_active = 1').bind(toInt(c.req.param('lesson'))).first<LessonRow>();
-  if (!l || !isPrivateKey(l.video_url) || !c.env.MEDIA) return notFound(c);
+  const driveId = l && serviceAccount(c.env) && /^https?:/.test(l.video_url) ? driveFileId(l.video_url) : null;
+  if (!l || (!driveId && (!isPrivateKey(l.video_url) || !c.env.MEDIA))) return notFound(c);
   if (!l.is_preview) {
     const st = await currentStudent(c);
     if (!st || !(await activeEnrollment(c.env, st.id, l.course_id))) return c.text('এই ভিডিওটি শুধু ভর্তি হওয়া শিক্ষার্থীদের জন্য', 403);
   }
   const range = c.req.header('range');
+  if (driveId) return driveResponse(c, driveId, range, 'inline');
+  if (!c.env.MEDIA) return notFound(c);
   const obj = await c.env.MEDIA.get(l.video_url, range ? { range: c.req.raw.headers } : undefined);
   if (!obj) return notFound(c);
   const headers = new Headers();

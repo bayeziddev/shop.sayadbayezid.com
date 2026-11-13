@@ -22,6 +22,8 @@ export interface Env {
   PAYMENT_MODE: 'live' | 'sandbox';
   META_PIXEL_ID?: string;
   META_GRAPH_VERSION?: string;
+  /** owner/name of the GitHub repository (written by the deploy workflow), for the storefront refresh. */
+  GITHUB_REPO?: string;
 
   // secrets (wrangler secret put …) — never sent to the browser
   ADMIN_SETUP_TOKEN?: string;
@@ -47,6 +49,18 @@ export interface Env {
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
   LEAD_WEBHOOK_URL?: string;
+  /**
+   * Google service account key (the JSON Google gives you, or base64 of it). Lets the Worker stream course videos
+   * and files from Google Drive that are shared only with the service account's email, and reach Gemini through
+   * Vertex AI. Synced from the GitHub secret of the same name.
+   */
+  GOOGLE_SERVICES_JSON?: string;
+  /**
+   * GitHub token that may start the "Publish storefront to GitHub Pages" workflow (fine-grained: this repository,
+   * Actions = read and write). With it, every admin change to prices, offers, packages or courses refreshes the
+   * public copy within about two minutes instead of waiting for the next scheduled run.
+   */
+  PAGES_REFRESH_TOKEN?: string;
 }
 
 export interface AdminUser {

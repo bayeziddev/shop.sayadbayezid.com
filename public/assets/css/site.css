@@ -939,3 +939,4 @@ h1, h2 { overflow-wrap: break-word; }
   .shop-main .course-ph { font-size: 2.2rem; }
 }
 .course-locked { margin: 1rem 0 0; }
+.live-offer { display: contents; }
