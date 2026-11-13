@@ -1,4 +1,4 @@
-import { $, $$, bn, taka, toast, api, captureAttribution, attribution, updateCartCount, formJson, showFieldError, setMsg } from './lib.js';
+import { $, $$, bn, taka, toast, api, API_BASE, captureAttribution, attribution, updateCartCount, formJson, showFieldError, setMsg } from './lib.js';
 import './leadbox.js';
 if (document.querySelector('[data-enroll-form],[data-student-login],[data-student-logout],[data-student-password],[data-lesson-done]')) import('./course.js');
 
@@ -166,6 +166,8 @@ lookup?.addEventListener('submit', async (e) => {
 
 /* Lazy page modules */
 if ($('[data-configurator]')) import('./configurator.js');
+// Static (GitHub Pages) copy: refresh prices and offers from the live API.
+if (API_BASE && $('[data-live-price],[data-live-offer],[data-live-total]')) import('./live-prices.js');
 if ($('[data-checkout]')) import('./checkout.js');
 if ($('[data-portal]')) import('./portal.js');
 if ($('[data-quiz]')) import('./quiz.js');

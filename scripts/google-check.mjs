@@ -60,15 +60,17 @@ try {
 
 /* Drive */
 const H = { authorization: `Bearer ${drive}` };
-const list = await fetch('https://www.googleapis.com/drive/v3/files?pageSize=200&q=trashed%3Dfalse&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=files(id,mimeType,size)', { headers: H });
+const list = await fetch('https://www.googleapis.com/drive/v3/files?pageSize=200&q=trashed%3Dfalse&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=nextPageToken,files(id,mimeType,size)', { headers: H });
 if (!list.ok) {
   failed = true;
   const why = await reason(list);
   say(false, /has not been used|disabled|accessNotConfigured/i.test(why) ? `Google Drive API is not enabled for this project — enable it in Google Cloud Console (APIs & Services → Library → Google Drive API). ${why}` : `Drive did not answer: ${why}`);
 } else {
-  const files = (await list.json()).files || [];
+  const page = await list.json();
+  const files = page.files || [];
   const videos = files.filter((f) => f.mimeType.startsWith('video/')).length;
-  say(files.length > 0, `Drive: ${files.length} file(s) are shared with the service account (${videos} video).${files.length ? '' : ' Share each course video with the service-account email as Viewer.'}`);
+  const more = page.nextPageToken ? '+' : '';
+  say(files.length > 0, `Drive: ${files.length}${more} file(s) are shared with the service account (${videos}${more} video in the first ${files.length}).${files.length ? '' : ' Share each course video with the service-account email as Viewer.'}`);
   const wantId = process.env.DRIVE_FILE_ID || '';
   const wantHash = (process.env.DRIVE_FILE_SHA256 || '').toLowerCase();
   const target = wantId ? { id: wantId } : wantHash ? files.find((f) => createHash('sha256').update(f.id).digest('hex') === wantHash) : null;

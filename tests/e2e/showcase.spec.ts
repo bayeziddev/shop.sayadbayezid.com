@@ -123,3 +123,24 @@ test('pages have no horizontal overflow, down to small 360px phones', async ({ p
     }
   }
 });
+
+test('the static (GitHub Pages) copy shows today\'s price even when it was built before the offer', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('sb_leadbox_v1', JSON.stringify({ done: Date.now() })));
+  // Serve an old copy of the page: no offer yet, and marked as the static copy (API on the Worker).
+  await page.route('**/package/lks-attire', async (route) => {
+    const res = await route.fetch();
+    const html = (await res.text())
+      .replace('<head>', '<head><meta name="sb-api-base" content="http://localhost:8788">')
+      .replace(/(data-live-price="\d+">)<strong>৳৬,০০০<\/strong> <s>৳১২,০০০<\/s>/g, '$1<strong>৳১২,০০০</strong> <span class="price-from">এককালীন</span>')
+      .replace(/(data-live-offer="\d+">)<span class="badge badge-offer">৫০% ছাড়<\/span>/g, '$1')
+      .replace(/(data-live-total="\d+">)৳৬,০০০/g, '$1৳১২,০০০');
+    await route.fulfill({ response: res, body: html, headers: { ...res.headers(), 'content-type': 'text/html; charset=utf-8' } });
+  });
+  await page.goto('/package/lks-attire');
+  // This package's own price (related packages further down have their own, without an offer).
+  const id = JSON.parse((await page.locator('#pkg-data').textContent()) || '{}').id;
+  // The stale copy had no offer badge and ৳১২,০০০ on the order buttons: both come back from the live API.
+  await expect(page.locator(`[data-live-offer="${id}"] .badge-offer`).first()).toHaveText('৫০% ছাড়');
+  await expect(page.locator(`[data-live-total="${id}"]`).first()).toHaveText('৳৬,০০০');
+  await expect(page.locator('[data-cfg="total-inline"]')).toHaveText('৳৬,০০০');
+});

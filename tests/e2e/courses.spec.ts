@@ -108,7 +108,8 @@ test('admin publishes a course → student enrols and pays → admin confirms �
   const row = admin.locator('tr', { hasText: 'পরীক্ষা শিক্ষার্থী' });
   await expect(row).toContainText(orderNo);
   await row.getByRole('button', { name: 'বন্ধ করুন' }).click();
-  await expect(row).toContainText('বন্ধ');
+  // Wait for the saved state (the list reloads with "turn back on"), not for text the button already had.
+  await expect(row.getByRole('button', { name: 'আবার চালু' })).toBeVisible();
   await page.goto(`/learn/${SLUG}/${second.id}`);
   await expect(page).toHaveURL(new RegExp(`/course/${SLUG}\\?not_enrolled=1`));
 });

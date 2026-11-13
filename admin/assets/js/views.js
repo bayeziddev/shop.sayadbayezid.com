@@ -15,34 +15,52 @@ const waLink = (phone) => `https://wa.me/${String(phone).replace(/\D/g, '')}`;
 /* ================= Dashboard ================= */
 let chart;
 export async function dashboard(root) {
-  const d = await api('/dashboard');
+  const [d, sf] = await Promise.all([api('/dashboard'), api('/storefront').catch(() => null)]);
   const k = d.kpi;
   const a = d.attention;
+  const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Dhaka', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
+  const hello = hour < 12 ? 'সুপ্রভাত' : hour < 17 ? 'শুভ দুপুর' : 'শুভ সন্ধ্যা';
+  const optional = (h) => h.hint === 'ঐচ্ছিক' || String(h.hint).startsWith('ঐচ্ছিক');
+  const sfLine = !sf || !sf.pages ? 'সাইট সরাসরি এই সার্ভার থেকে চলছে — আলাদা আপডেটের দরকার নেই।'
+    : sf.token && sf.repo ? `দাম, অফার বা লেখা বদলালেই পাবলিক সাইট ১–২ মিনিটে নিজে থেকে আপডেট হয়।${sf.last ? ` শেষ আপডেট শুরু: ${fmtDate(sf.last.at)} ${sf.last.ok ? '✓' : '✗'}` : ''}`
+    : 'পাবলিক সাইট (GitHub Pages) কয়েক ঘণ্টা পরপর নিজে আপডেট হয়। দাম বা অফার বদলানোর পর দাম সাথে সাথেই ঠিক দেখায়; বাকি লেখার জন্য “সাইট আপডেট” চাপুন অথবা PAGES_REFRESH_TOKEN যোগ করুন (সহায়তা দেখুন)।';
   root.innerHTML = `
-  <div class="page-head"><h1>ড্যাশবোর্ড</h1><span class="muted small">${fmtDate(new Date().toISOString())}</span></div>
-  <div class="health" aria-label="সংযোগের অবস্থা">${d.health.map((h) => `<span class="pill ${h.ok ? 'ok' : h.hint === 'ঐচ্ছিক' || h.hint.startsWith('ঐচ্ছিক') ? '' : 'warn'}" title="${esc(h.hint)}">${h.ok ? '✓' : '○'} ${esc(h.label)}: ${h.ok ? 'সংযুক্ত' : 'এখনো সংযুক্ত নয়'}</span>`).join('')}</div>
-  ${d.onboarding && d.onboarding.some((s) => !s.done) ? `<div class="card onboard"><div style="display:flex;justify-content:space-between;gap:.5rem"><h2>শুরু করার ধাপ</h2>${can('settings.write') ? '<button class="btn sm" data-dismiss-onboard>লুকান</button>' : ''}</div>
-    <ol>${d.onboarding.map((s) => `<li class="${s.done ? 'done' : ''}">${s.done ? esc(s.label) : `<a href="${s.link}">${esc(s.label)}</a>`}</li>`).join('')}</ol></div>` : ''}
-  <h2>আজ যেগুলোতে আপনার নজর দরকার</h2>
-  <div class="attention">
-    <div class="card"><h3>নতুন লিড (${bn(a.newLeads.length)})</h3><ul>${a.newLeads.map((l) => `<li><a href="#/leads/${l.id}">${esc(l.name)}</a> <span class="muted small">${SRC[l.source] || l.source}</span>${can('leads.write') ? `<button class="btn sm" data-followed="${l.id}">ফলো-আপ হয়েছে</button>` : ''}</li>`).join('') || '<li class="muted">কিছু নেই 🎉</li>'}</ul></div>
-    <div class="card"><h3>মানুষের সহায়তা চাওয়া চ্যাট (${bn(a.escalatedChats.length)})</h3><ul>${a.escalatedChats.map((c) => `<li><a href="#/chats">${esc(c.visitor_name || 'অজ্ঞাত দর্শনার্থী')}</a><span class="muted small">${fmtDate(c.updated_at)}</span></li>`).join('') || '<li class="muted">কিছু নেই</li>'}</ul></div>
-    <div class="card"><h3>পেমেন্ট যাচাই বাকি (${bn(a.pendingPayments.length)})</h3><ul>${a.pendingPayments.map((o) => `<li><a href="#/orders/${o.id}">${esc(o.order_number)}</a> <span>${taka(o.total)}</span></li>`).join('') || '<li class="muted">কিছু নেই</li>'}</ul></div>
-    <div class="card"><h3>অনেক দিন একই ধাপে আটকে আছে (${bn(a.stuckOrders.length)})</h3><ul>${a.stuckOrders.map((o) => `<li><a href="#/orders/${o.id}">${esc(o.order_number)}</a> ${projPill(o.project_status)}${can('orders.write') ? `<button class="btn sm" data-advance="${o.id}">পরের ধাপ</button>` : ''}</li>`).join('') || '<li class="muted">কিছু নেই</li>'}</ul></div>
-    ${a.pendingReviews ? `<div class="card"><h3>অনুমোদনের অপেক্ষায় রিভিউ</h3><p><a href="#/reviews">${bn(a.pendingReviews)}টি রিভিউ দেখুন</a></p></div>` : ''}
-  </div>
+  <div class="page-head"><div><h1>${hello}, ${esc(state.me.name)}</h1><p class="sub">${fmtDate(new Date().toISOString())}</p></div>
+    <div class="actions">${can('catalog.write') ? '<a class="btn" href="#/packages/new">+ নতুন প্যাকেজ</a><a class="btn" href="#/courses/new">+ নতুন কোর্স</a>' : ''}<a class="btn primary" href="#/orders">অর্ডার দেখুন</a></div></div>
   <div class="kpis">
     <div class="kpi"><b>${bn(k.orders_today)}</b><span>আজকের অর্ডার</span></div>
     <div class="kpi"><b>${taka(k.revenue_today)}</b><span>আজকের আয়</span></div>
     <div class="kpi"><b>${taka(k.revenue_30d)}</b><span>গত ৩০ দিনের আয়</span></div>
     <div class="kpi"><b>${bn(k.leads_today)}</b><span>আজকের নতুন লিড</span></div>
-    <div class="kpi"><b>${bn(k.active_chats)}</b><span>সক্রিয় চ্যাট</span></div>
-    <div class="kpi"><b>${bn(k.awaiting_delivery)}</b><span>ডেলিভারির অপেক্ষায় প্রজেক্ট</span></div>
+    <div class="kpi"><b>${bn(k.active_chats)}</b><span>সহায়তা চাওয়া চ্যাট</span></div>
+    <div class="kpi"><b>${bn(k.awaiting_delivery)}</b><span>ডেলিভারির অপেক্ষায়</span></div>
   </div>
-  <div class="card" style="margin-bottom:1rem"><h2>বিক্রি — গত ৩০ দিন</h2><div class="chart-box"><canvas id="sales-chart" aria-label="বিক্রির চার্ট"></canvas></div></div>
-  <div class="card"><h2>সাম্প্রতিক অর্ডার</h2><div class="table-wrap"><table><thead><tr><th>অর্ডার</th><th>ক্লায়েন্ট</th><th>মোট</th><th>পেমেন্ট</th><th>প্রজেক্ট</th><th>তারিখ</th></tr></thead><tbody>
-    ${d.recentOrders.map((o) => `<tr><td><a href="#/orders/${o.id}">${esc(o.order_number)}</a></td><td>${esc(o.customer_name)}</td><td>${taka(o.total)}</td><td>${payPill(o.payment_status)}</td><td>${projPill(o.project_status)}</td><td class="small">${fmtDate(o.created_at)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">এখনো কোনো অর্ডার নেই</td></tr>'}
+  ${d.onboarding && d.onboarding.some((s) => !s.done) ? `<div class="card onboard"><div class="card-head"><h2>শুরু করার ধাপ</h2>${can('settings.write') ? '<button class="btn sm" data-dismiss-onboard>লুকান</button>' : ''}</div>
+    <ol>${d.onboarding.map((s) => `<li class="${s.done ? 'done' : ''}">${s.done ? esc(s.label) : `<a href="${s.link}">${esc(s.label)}</a>`}</li>`).join('')}</ol></div>` : ''}
+  <h2>আজ যেগুলোতে নজর দরকার</h2>
+  <div class="attention">
+    <div class="card"><h3>নতুন লিড (${bn(a.newLeads.length)})</h3><ul>${a.newLeads.map((l) => `<li><a href="#/leads/${l.id}">${esc(l.name)}</a> <span class="muted small">${SRC[l.source] || l.source}</span>${can('leads.write') ? `<button class="btn sm" data-followed="${l.id}">ফলো-আপ হয়েছে</button>` : ''}</li>`).join('') || '<li class="muted">কিছু নেই 🎉</li>'}</ul></div>
+    <div class="card"><h3>পেমেন্ট যাচাই বাকি (${bn(a.pendingPayments.length)})</h3><ul>${a.pendingPayments.map((o) => `<li><a href="#/orders/${o.id}">${esc(o.order_number)}</a> <span>${taka(o.total)}</span></li>`).join('') || '<li class="muted">কিছু নেই</li>'}</ul></div>
+    <div class="card"><h3>সহায়তা চাওয়া চ্যাট (${bn(a.escalatedChats.length)})</h3><ul>${a.escalatedChats.map((c) => `<li><a href="#/chats">${esc(c.visitor_name || 'অজ্ঞাত দর্শনার্থী')}</a><span class="muted small">${fmtDate(c.updated_at)}</span></li>`).join('') || '<li class="muted">কিছু নেই</li>'}</ul></div>
+    <div class="card"><h3>অনেক দিন একই ধাপে (${bn(a.stuckOrders.length)})</h3><ul>${a.stuckOrders.map((o) => `<li><a href="#/orders/${o.id}">${esc(o.order_number)}</a> ${projPill(o.project_status)}${can('orders.write') ? `<button class="btn sm" data-advance="${o.id}">পরের ধাপ</button>` : ''}</li>`).join('') || '<li class="muted">কিছু নেই</li>'}</ul></div>
+    ${a.pendingReviews ? `<div class="card"><h3>অনুমোদনের অপেক্ষায় রিভিউ</h3><p><a href="#/reviews">${bn(a.pendingReviews)}টি রিভিউ দেখুন</a></p></div>` : ''}
+  </div>
+  <div class="dash-row">
+    <div class="card"><h2>বিক্রি — গত ৩০ দিন</h2><div class="chart-box"><canvas id="sales-chart" aria-label="বিক্রির চার্ট"></canvas></div></div>
+    <div class="grid">
+      <div class="card"><div class="card-head"><h2>পাবলিক সাইট</h2>${can('catalog.write') && sf?.pages ? '<button class="btn sm" data-dash-refresh>↻ এখনই আপডেট</button>' : ''}</div><p class="small muted" style="margin:0">${esc(sfLine)}</p></div>
+      <div class="card"><h2>সংযোগের অবস্থা</h2><ul class="status-list">${d.health.map((h) => `<li><span class="st ${h.ok ? 'ok' : optional(h) ? '' : 'warn'}">${h.ok ? '✓' : optional(h) ? '–' : '!'}</span><span>${esc(h.label)}${!h.ok && h.hint ? `<br><span class="small muted">${esc(h.hint)}</span>` : ''}</span></li>`).join('')}</ul></div>
+    </div>
+  </div>
+  <div class="card"><div class="card-head"><h2>সাম্প্রতিক অর্ডার</h2><a class="btn sm" href="#/orders">সব অর্ডার →</a></div><div class="table-wrap"><table><thead><tr><th>অর্ডার</th><th>ক্লায়েন্ট</th><th>মোট</th><th>পেমেন্ট</th><th>অবস্থা</th><th>তারিখ</th></tr></thead><tbody>
+    ${d.recentOrders.map((o) => `<tr><td data-label="অর্ডার"><a href="#/orders/${o.id}">${esc(o.order_number)}</a></td><td data-label="ক্লায়েন্ট">${esc(o.customer_name)}</td><td data-label="মোট">${taka(o.total)}</td><td data-label="পেমেন্ট">${payPill(o.payment_status)}</td><td data-label="অবস্থা">${projPill(o.project_status)}</td><td data-label="তারিখ" class="small">${fmtDate(o.created_at)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">এখনো কোনো অর্ডার নেই</td></tr>'}
   </tbody></table></div></div>`;
+  $('[data-dash-refresh]', root)?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try { await api('/storefront/refresh', { method: 'POST', body: {} }); toast('পাবলিক সাইট আপডেট শুরু হয়েছে — ১–২ মিনিট লাগবে'); } catch (err) { toast(err.message, true); }
+    btn.disabled = false;
+  });
 
   // Chart.js (vendored, loaded with defer)
   const days = [];
@@ -217,76 +235,191 @@ export async function openLead(id, reload) {
 }
 
 /* ================= Package editor (with add-ons, offers & AI draft) ================= */
+/* ================= Tabbed editor helpers (package + course editors) ================= */
+/** Tabs that show one panel at a time; every field stays in the same form, so one save sends everything. */
+function bindTabs(root, key) {
+  const tabs = $$('.tabs [data-tab]', root);
+  const show = (name) => {
+    tabs.forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === name)));
+    $$('[data-panel]', root).forEach((p) => { p.hidden = p.dataset.panel !== name; });
+    const bar = $('[data-savebar]', root);
+    if (bar) bar.hidden = !!$(`[data-panel="${name}"][data-nosave]`, root);
+    try { sessionStorage.setItem(`adm_tab_${key}`, name); } catch {}
+  };
+  tabs.forEach((t) => t.addEventListener('click', () => show(t.dataset.tab)));
+  let first = tabs[0]?.dataset.tab;
+  try { const saved = sessionStorage.getItem(`adm_tab_${key}`); if (saved && tabs.some((t) => t.dataset.tab === saved)) first = saved; } catch {}
+  if (first) show(first);
+  return show;
+}
+const tabBar = (tabs) => `<div class="tabs" role="tablist">${tabs.map(([k, l]) => `<button type="button" role="tab" data-tab="${k}">${esc(l)}</button>`).join('')}</div>`;
+const panelFields = (fields, names, values) => names.map((n) => { const f = fields.find((x) => x.name === n); return f ? fieldHtml(f, values[n]) : ''; }).join('');
+
+/* ================= Package editor ================= */
 export async function packageEditor(root, id) {
   const isNew = id === 'new';
-  const p = isNew ? { status: 'active', tier: 'basic', images: '[]', features: '[]', base_price: 0, delivery_days: 7 } : await api(`/packages/${id}`);
+  const p = isNew ? { status: 'active', tier: 'standard', images: '[]', features: '[]', base_price: 12000, delivery_days: 7 } : await api(`/packages/${id}`);
   const cats = state.lookups.categories.map((c) => [c.id, c.name]);
   const fields = [
     { name: 'category_id', label: 'ক্যাটাগরি', type: 'select', options: cats, required: true, numeric: true },
     { name: 'name', label: 'প্যাকেজের নাম', required: true, max: 150 },
     { name: 'slug', label: 'স্লাগ (ইউআরএল)', required: true, pattern: '[a-z0-9]+(-[a-z0-9]+)*', hint: 'ছোট হাতের ইংরেজি অক্ষর ও হাইফেন, যেমন fashion-premium' },
     { name: 'tier', label: 'স্তর', type: 'select', options: [['standard', 'রেডি সাইট'], ['basic', 'বেসিক'], ['premium', 'প্রিমিয়াম'], ['custom', 'কাস্টম']], required: true },
-    { name: 'base_price', label: 'মূল দাম (৳)', type: 'number', min: 0, required: true },
+    { name: 'status', label: 'অবস্থা', type: 'select', options: [['active', 'সক্রিয় — সাইটে দেখায়'], ['coming_soon', 'শীঘ্রই আসছে'], ['inactive', 'নিষ্ক্রিয় — লুকানো']], required: true },
+    { name: 'is_featured', label: 'হোমপেজের স্লাইডে দেখান', type: 'bool' },
+    { name: 'sort_order', label: 'ক্রম (ছোট সংখ্যা আগে)', type: 'number' },
+    { name: 'base_price', label: 'নিয়মিত দাম (৳)', type: 'number', min: 0, required: true, hint: 'ছাড় দিলে এটি কেটে দেখাবে' },
     { name: 'delivery_days', label: 'ডেলিভারি (কর্মদিবস)', type: 'number', min: 1 },
-    { name: 'status', label: 'অবস্থা', type: 'select', options: [['active', 'সক্রিয়'], ['inactive', 'নিষ্ক্রিয়'], ['coming_soon', 'শীঘ্রই আসছে']], required: true },
     { name: 'demo_url', label: 'লাইভ ডেমো লিংক (মূল বোতাম)', inputType: 'url', placeholder: 'https://' },
     { name: 'demo_links', label: 'আরও ডেমো বোতাম — যেমন অ্যাডমিন প্যানেল', type: 'links', hint: 'যেমন: অ্যাডমিন প্যানেল ডেমো | https://…' },
     { name: 'demo_login', label: 'ডেমো লগইন তথ্য (ডেমো বোতামের নিচে দেখাবে)', max: 300, placeholder: 'অ্যাডমিন: demo / demo12345' },
     { name: 'short_description', label: 'সংক্ষিপ্ত বিবরণ (কার্ডে দেখায়)', type: 'textarea', rows: 2, max: 300 },
     { name: 'solution', label: 'সমাধান — এই সাইট ক্লায়েন্টের কোন সমস্যা মেটাবে', type: 'textarea', rows: 4, max: 3000 },
-    { name: 'problems', label: 'সমস্যা ও সমাধান — ক্লায়েন্ট এখন কোন ঝামেলায় আছেন, সাইট কীভাবে মেটায়', type: 'list', rows: 5, hint: 'প্রতি লাইনে: সমস্যা | সমাধান' },
-    { name: 'how_it_works', label: 'কীভাবে কাজ করবে — ক্রেতা আসা থেকে ডেলিভারি পর্যন্ত ধাপ', type: 'list', rows: 5, hint: 'প্রতি লাইনে: ধাপের নাম | কী হয়' },
+    { name: 'problems', label: 'সমস্যা ও সমাধান', type: 'list', rows: 5, hint: 'প্রতি লাইনে: সমস্যা | সমাধান' },
+    { name: 'how_it_works', label: 'কীভাবে কাজ করবে — ক্রেতা আসা থেকে ডেলিভারি পর্যন্ত', type: 'list', rows: 5, hint: 'প্রতি লাইনে: ধাপের নাম | কী হয়' },
     { name: 'benefits', label: 'ক্লায়েন্টের লাভ', type: 'list', rows: 4, hint: 'প্রতি লাইনে: শিরোনাম | বিবরণ' },
     { name: 'profit_points', label: 'লাভের হিসাব — টাকা কোথা থেকে আসে বা বাঁচে', type: 'list', rows: 4, hint: 'প্রতি লাইনে: লাভের উৎস | ব্যাখ্যা' },
-    { name: 'roi_profit', label: 'হিসাব-ক্যালকুলেটর: প্রতি অর্ডারে উদাহরণ লাভ (৳)', type: 'number', min: 0, hint: '০ দিলে ক্যালকুলেটর দেখাবে না · ভিজিটর নিজের সংখ্যা বসাতে পারেন' },
-    { name: 'roi_orders', label: 'হিসাব-ক্যালকুলেটর: দিনে উদাহরণ অর্ডার', type: 'number', min: 0 },
-    { name: 'features', label: 'ফিচার তালিকা', type: 'list' },
+    { name: 'roi_profit', label: 'ক্যালকুলেটর: প্রতি অর্ডারে উদাহরণ লাভ (৳)', type: 'number', min: 0, hint: '০ দিলে ক্যালকুলেটর দেখাবে না' },
+    { name: 'roi_orders', label: 'ক্যালকুলেটর: দিনে উদাহরণ অর্ডার', type: 'number', min: 0 },
     { name: 'description', label: 'বিস্তারিত বিবরণ', type: 'textarea', rows: 7, max: 8000 },
-    { name: 'why_us', label: 'কেন আমরা সেরা (এই প্যাকেজের জন্য আলাদা হলে)', type: 'list', rows: 4, hint: 'খালি রাখলে সিস্টেম সেটিংসের সাধারণ তালিকা দেখাবে · প্রতি লাইনে: শিরোনাম | বিবরণ' },
+    { name: 'why_us', label: 'কেন আমরা সেরা (এই প্যাকেজের জন্য আলাদা হলে)', type: 'list', rows: 4, hint: 'খালি রাখলে সাধারণ তালিকা দেখাবে · প্রতি লাইনে: শিরোনাম | বিবরণ' },
     { name: 'cover_image', label: 'কভার ছবি (কার্ড ও শেয়ারে দেখায়)', type: 'image' },
     { name: 'images', label: 'স্ক্রিনশট গ্যালারি', type: 'images' },
-    { name: 'video_url', label: 'বিস্তারিত ভিডিও — ইউটিউব / ফেসবুক / ভিমিও / গুগল ড্রাইভ লিংক অথবা ফাইল আপলোড', type: 'video' },
+    { name: 'video_url', label: 'ভিডিও — ইউটিউব / ফেসবুক / ভিমিও / গুগল ড্রাইভ লিংক অথবা ফাইল আপলোড', type: 'video' },
     { name: 'screen_tour', label: 'ফিচার ট্যুর — স্ক্রিনশট ও তার পাশের লেখা', type: 'tour', hint: 'প্রতি লাইনে: ছবির লিংক | শিরোনাম | বিবরণ' },
+    { name: 'features', label: 'মূল ফিচার (কার্ডে প্রথম ৩টি দেখায়)', type: 'list' },
     { name: 'feature_groups', label: 'A থেকে Z সব ফিচার', type: 'groups', hint: '# দিয়ে গ্রুপের নাম, তার নিচে প্রতি লাইনে একটি ফিচার' },
-    { name: 'is_featured', label: 'হোমপেজে দেখান', type: 'bool' },
-    { name: 'sort_order', label: 'ক্রম', type: 'number' },
   ];
   const draft = p.ai_draft ? JSON.parse(p.ai_draft) : null;
   const writable = can('catalog.write');
+  const canOffer = can('marketing.write');
+  // The package's own offer (simple % control). Older flat-amount offers stay editable in the list below it.
+  let offer = null;
+  if (!isNew) {
+    const list = (await api(`/offers?scope=package&scope_id=${id}&per=50`).catch(() => ({ items: [] }))).items;
+    offer = list.find((o) => o.is_active) || null;
+  }
+  const pct = offer && offer.discount_type === 'percent' ? offer.discount_value : '';
+  const tabs = [['basic', 'মূল তথ্য'], ['price', 'দাম ও অফার'], ['sales', 'বিক্রির লেখা'], ['media', 'ছবি ও ভিডিও'], ['features', 'ফিচার'], ...(isNew ? [] : [['extra', 'প্রশ্নোত্তর ও অ্যাড-অন']])];
+  const stPill = { active: ['সক্রিয়', 'ok'], coming_soon: ['শীঘ্রই আসছে', 'info'], inactive: ['লুকানো', 'bad'] }[p.status] || ['', ''];
   root.innerHTML = `
-    <div class="page-head"><h1>${isNew ? 'নতুন প্যাকেজ' : esc(p.name)}</h1><div class="actions"><a class="btn" href="#/packages">← সব প্যাকেজ</a>${!isNew ? `<a class="btn" href="#/preview?path=${encodeURIComponent('/package/' + p.slug)}">👁 প্রিভিউ ও এডিট মোড</a><a class="btn" href="/package/${esc(p.slug)}" target="_blank" rel="noopener">নতুন ট্যাবে দেখুন ↗</a>` : ''}</div></div>
+    <a class="back" href="#/packages">← সব প্যাকেজ</a>
+    <div class="page-head"><div><h1>${isNew ? 'নতুন প্যাকেজ' : esc(p.name)}</h1>${isNew ? '' : `<p class="sub">${stPill[0] ? `<span class="pill ${stPill[1]}">${stPill[0]}</span> · ` : ''}/package/${esc(p.slug)}</p>`}</div>
+      <div class="actions">${!isNew ? `<a class="btn" href="#/preview?path=${encodeURIComponent('/package/' + p.slug)}">👁 প্রিভিউ</a><a class="btn" href="/package/${esc(p.slug)}" target="_blank" rel="noopener">সাইটে দেখুন ↗</a>` : ''}</div></div>
     ${draft ? `<div class="card draft" data-draft><h2>এআই খসড়া — পর্যালোচনা প্রয়োজন</h2><p class="small muted">এটি এখনো সাইটে প্রকাশিত হয়নি। সম্পাদনা করে অনুমোদন দিলে তবেই লাইভ হবে।</p>
       <div class="grid"><label>শিরোনাম<input data-d="name" value="${esc(draft.title)}"></label><label>সংক্ষিপ্ত বিবরণ<textarea data-d="short_description" rows="2">${esc(draft.shortDescription)}</textarea></label><label>বিস্তারিত<textarea data-d="description" rows="6">${esc(draft.description)}</textarea></label></div>
-      ${writable ? '<div style="display:flex;gap:.5rem;margin-top:.6rem"><button class="btn primary" data-approve>অনুমোদন দিয়ে প্রকাশ করুন</button><button class="btn danger" data-discard>বাতিল</button></div>' : ''}</div>` : ''}
-    <div class="grid" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr);align-items:start">
-      <form class="card grid" data-pkg>${fields.map((f) => fieldHtml(f, p[f.name])).join('')}
-        ${writable ? `<div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn primary">সংরক্ষণ করুন</button>${can('ai.use') ? '<button class="btn" type="button" data-suggest>✨ এআই দিয়ে শিরোনাম ও বিবরণ সাজেস্ট করুন</button>' : ''}</div>` : ''}</form>
-      <div class="grid">${isNew ? '<div class="card muted">প্রথমে সংরক্ষণ করুন, তারপর অ্যাড-অন ও অফার যোগ করা যাবে।</div>' : '<div class="card" data-pkg-faqs></div><div class="card" data-addons></div><div class="card" data-offers></div>'}</div>
-    </div>`;
+      ${writable ? '<div style="display:flex;gap:.5rem;margin-top:.6rem;flex-wrap:wrap"><button class="btn primary" data-approve>অনুমোদন দিয়ে প্রকাশ করুন</button><button class="btn danger" data-discard>বাতিল</button></div>' : ''}</div>` : ''}
+    ${tabBar(tabs)}
+    <form data-pkg novalidate>
+      <section class="tab-panel" data-panel="basic">
+        <div class="card grid"><h2 class="section-title">প্যাকেজের পরিচয়</h2>${panelFields(fields, ['name', 'category_id'], p)}<div class="grid g2">${panelFields(fields, ['slug', 'tier'], p)}</div></div>
+        <div class="card grid"><h2 class="section-title">সাইটে দেখানো</h2><div class="grid g2">${panelFields(fields, ['status', 'sort_order'], p)}</div>${panelFields(fields, ['is_featured'], p)}</div>
+        <div class="card grid"><h2 class="section-title">লাইভ ডেমো</h2><p class="section-help">ক্রেতা কেনার আগে নিজে চালিয়ে দেখেন — সবচেয়ে বেশি বিক্রি আনে।</p>${panelFields(fields, ['demo_url', 'demo_links', 'demo_login'], p)}</div>
+      </section>
+      <section class="tab-panel" data-panel="price" hidden>
+        <div class="card grid">
+          <h2 class="section-title">দাম ও ছাড়</h2>
+          <p class="section-help">নিয়মিত দাম লিখুন। ছাড় দিতে চাইলে শুধু “ছাড় %” লিখুন — সাইটে নিয়মিত দাম কেটে নতুন দাম দেখাবে, চেকআউটেও এই দামই নেওয়া হবে।</p>
+          <div class="grid g3">${panelFields(fields, ['base_price'], p)}
+            ${canOffer ? `<label>ছাড় % <small>খালি বা ০ = কোনো ছাড় নেই</small><input type="number" min="0" max="90" step="1" data-discount value="${esc(pct)}" placeholder="যেমন ৫০"></label>
+            <label>ছাড় শেষ হবে <small>খালি = যতদিন না বন্ধ করেন</small><input type="datetime-local" data-discount-end value="${offer && offer.discount_type === 'percent' ? toLocalInput(offer.ends_at) : ''}"></label>` : ''}
+          </div>
+          <div class="price-preview" data-price-preview aria-live="polite"></div>
+          ${offer && offer.discount_type !== 'percent' ? `<p class="small note-info card">এখন ${taka(offer.discount_value)} ছাড়ের একটি অফার চলছে — নিচের “সব অফার” তালিকা থেকে বদলান।</p>` : ''}
+          ${panelFields(fields, ['delivery_days'], p)}
+        </div>
+        ${isNew ? '' : '<div class="card" data-offers></div>'}
+      </section>
+      <section class="tab-panel" data-panel="sales" hidden>
+        <div class="card grid"><h2 class="section-title">কার্ড ও পরিচিতি</h2>${panelFields(fields, ['short_description', 'solution'], p)}</div>
+        <div class="card grid"><h2 class="section-title">ক্লায়েন্টের সমস্যা ও লাভ</h2>${panelFields(fields, ['problems', 'how_it_works', 'benefits', 'profit_points'], p)}<div class="grid g2">${panelFields(fields, ['roi_profit', 'roi_orders'], p)}</div></div>
+        <div class="card grid"><h2 class="section-title">বিস্তারিত</h2>${panelFields(fields, ['description', 'why_us'], p)}</div>
+      </section>
+      <section class="tab-panel" data-panel="media" hidden>
+        <div class="card grid">${panelFields(fields, ['cover_image', 'images', 'video_url'], p)}</div>
+        <div class="card grid">${panelFields(fields, ['screen_tour'], p)}</div>
+      </section>
+      <section class="tab-panel" data-panel="features" hidden>
+        <div class="card grid">${panelFields(fields, ['features', 'feature_groups'], p)}</div>
+      </section>
+    </form>
+    ${isNew ? '' : '<section class="tab-panel" data-panel="extra" data-nosave hidden><div class="card" data-pkg-faqs></div><div class="card" data-addons></div></section>'}
+    ${writable ? `<div class="savebar" data-savebar><span class="hint">সব ট্যাবের পরিবর্তন একসাথে সংরক্ষণ হবে</span>${can('ai.use') ? '<button class="btn" type="button" data-suggest>✨ এআই সাজেশন</button>' : ''}<button class="btn primary" type="button" data-save>সংরক্ষণ করুন</button></div>` : ''}`;
+
   const form = $('[data-pkg]', root);
   bindMedia(form);
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  bindTabs(root, 'pkg');
+  const discountEl = $('[data-discount]', root);
+  const preview = () => {
+    const box = $('[data-price-preview]', root);
+    const base = Number(form.elements.namedItem('base_price').value) || 0;
+    const d = Math.max(0, Math.min(90, Number(discountEl?.value) || 0));
+    const now = Math.round(base - (base * d) / 100);
+    box.innerHTML = d > 0
+      ? `ক্রেতা দেখবেন: <strong>${taka(now)}</strong> <s>${taka(base)}</s> <span class="pill ok">${bn(d)}% ছাড়</span>`
+      : `ক্রেতা দেখবেন: <strong>${taka(base)}</strong> <span class="muted small">এককালীন — কোনো ছাড় নেই</span>`;
+  };
+  form.addEventListener('input', (e) => { if (e.target.name === 'base_price' || e.target.matches('[data-discount]')) preview(); });
+  discountEl?.addEventListener('input', preview);
+  preview();
+
+  /** Create, change or switch off the package's own % offer to match the simple control. */
+  async function syncOffer(pkgId) {
+    if (!discountEl) return;
+    const d = Math.max(0, Math.min(90, Math.round(Number(discountEl.value) || 0)));
+    const endEl = $('[data-discount-end]', root);
+    const ends = endEl?.value ? fromLocalInput(endEl.value) : null;
+    if (d > 0) {
+      const body = { scope: 'package', scope_id: Number(pkgId), title: `${bn(d)}% ছাড়`, discount_type: 'percent', discount_value: d, ends_at: ends, show_timer: ends ? 1 : 0, is_active: 1 };
+      if (offer && offer.discount_type === 'percent') offer = await api(`/offers/${offer.id}`, { method: 'PUT', body });
+      else offer = await api('/offers', { method: 'POST', body });
+    } else if (offer && offer.discount_type === 'percent' && offer.is_active) {
+      await api(`/offers/${offer.id}`, { method: 'PUT', body: { is_active: 0 } });
+      offer = null;
+    }
+  }
+
+  const save = async () => {
     setFieldError(form);
     const data = readForm(form, fields);
+    const btn = $('[data-save]', root);
+    if (btn) btn.disabled = true;
     try {
-      if (isNew) { const r = await api('/packages', { method: 'POST', body: data }); toast('প্যাকেজ তৈরি হয়েছে'); location.hash = `#/packages/${r.id}`; }
-      else { await api(`/packages/${id}`, { method: 'PUT', body: data }); toast('সংরক্ষিত হয়েছে'); }
-    } catch (err) { setFieldError(form, err.code, err.message); toast(err.message, true); }
-  });
+      if (isNew) {
+        const r = await api('/packages', { method: 'POST', body: data });
+        await syncOffer(r.id);
+        toast('প্যাকেজ তৈরি হয়েছে');
+        location.hash = `#/packages/${r.id}`;
+      } else {
+        await api(`/packages/${id}`, { method: 'PUT', body: data });
+        await syncOffer(id);
+        toast('সংরক্ষিত হয়েছে — পাবলিক সাইটে ১–২ মিনিটে দেখা যাবে');
+        offersList?.reload();
+      }
+    } catch (err) {
+      setFieldError(form, err.code, err.message);
+      // Show the tab that holds the field with the problem.
+      const bad = err.code && form.querySelector(`[name="${err.code}"]`);
+      const panel = bad?.closest('[data-panel]');
+      if (panel) $(`.tabs [data-tab="${panel.dataset.panel}"]`, root)?.click();
+      toast(err.message, true);
+    } finally { if (btn) btn.disabled = false; }
+  };
+  $('[data-save]', root)?.addEventListener('click', save);
+  form.addEventListener('submit', (e) => { e.preventDefault(); save(); });
+
   $('[data-suggest]', root)?.addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     const label = btn.textContent;
     const el = (n) => form.elements.namedItem(n);
     const name = (el('name')?.value || '').trim();
-    if (!name) { toast('আগে প্যাকেজের নাম লিখুন — এআই নাম ও ফিচার দেখে লেখে', true); el('name')?.focus(); return; }
+    if (!name) { toast('আগে প্যাকেজের নাম লিখুন — এআই নাম ও ফিচার দেখে লেখে', true); $('.tabs [data-tab="basic"]', root)?.click(); el('name')?.focus(); return; }
     const features = (el('features')?.value || '').split('\n').map((x) => x.trim()).filter(Boolean);
     btn.disabled = true;
     btn.textContent = 'তৈরি হচ্ছে… (১০–৩০ সেকেন্ড)';
     try {
       const r = await api('/ai/suggest', { method: 'POST', body: { packageId: isNew ? undefined : Number(id), name, features } });
       if (isNew) {
-        // Nothing is saved yet: put the suggestion straight into the form to review before saving.
         const set = (n, v) => { const input = el(n); if (input && v) { input.value = v; input.dispatchEvent(new Event('input', { bubbles: true })); } };
         set('name', r.draft.title); set('short_description', r.draft.shortDescription); set('description', r.draft.description);
         toast('এআই-এর লেখা ফর্মে বসানো হয়েছে — দেখে সংরক্ষণ করুন');
@@ -306,27 +439,27 @@ export async function packageEditor(root, id) {
   });
   $('[data-discard]', root)?.addEventListener('click', async () => { await api(`/packages/${id}/discard-draft`, { method: 'POST', body: {} }); packageEditor(root, id); });
 
+  let offersList = null;
   if (!isNew) {
     const addonFields = [
       { name: 'name', label: 'নাম', required: true, max: 120 }, { name: 'description', label: 'বিবরণ', max: 300 },
       { name: 'price_delta', label: 'অতিরিক্ত দাম (৳)', type: 'number', min: 0, required: true }, { name: 'max_quantity', label: 'সর্বোচ্চ সংখ্যা (১ = চালু/বন্ধ)', type: 'number', min: 1, default: 1 },
       { name: 'is_active', label: 'সক্রিয়', type: 'bool', default: 1 }, { name: 'sort_order', label: 'ক্রম', type: 'number', default: 0 },
     ];
-    // This package's own FAQs, edited right here (the site-wide ones live under প্রশ্নোত্তর).
     await listView($('[data-pkg-faqs]', root), {
-      title: 'এই প্যাকেজের প্রশ্নোত্তর', singular: 'প্রশ্ন', endpoint: '/faqs', defaultFilters: { scope: 'package', package_id: id }, search: false, writePerm: 'marketing.write', perPage: 50, titleKey: 'question',
+      title: 'এই প্যাকেজের প্রশ্নোত্তর', singular: 'প্রশ্ন', endpoint: '/faqs', defaultFilters: { scope: 'package', package_id: id }, search: false, writePerm: 'marketing.write', perPage: 50, titleKey: 'question', embedded: true,
       intro: 'প্যাকেজ পেজের নিচে দেখায়, তারপর সাইটের সাধারণ প্রশ্নগুলো।',
       fields: [{ name: 'question', label: 'প্রশ্ন', required: true, max: 300 }, { name: 'answer', label: 'উত্তর', type: 'textarea', required: true }, { name: 'sort_order', label: 'ক্রম', type: 'number', default: 0 }, { name: 'is_active', label: 'সক্রিয়', type: 'bool', default: 1 }],
       newValues: { is_active: 1, sort_order: 0 }, toApi: (d) => ({ ...d, scope: 'package', package_id: Number(id) }),
       columns: [{ label: 'প্রশ্ন', render: (f) => `<b>${esc(f.question)}</b><br><span class="small muted">${esc(String(f.answer).slice(0, 90))}</span>` }, { label: '', render: (f) => (f.is_active ? '' : statusPill('বন্ধ', 'bad')) }],
     });
     await listView($('[data-addons]', root), {
-      title: 'অ্যাড-অন (ঐচ্ছিক)', singular: 'অ্যাড-অন', endpoint: '/addons', defaultFilters: { package_id: id }, search: false, writePerm: 'catalog.write', perPage: 50,
+      title: 'অ্যাড-অন (ঐচ্ছিক)', singular: 'অ্যাড-অন', endpoint: '/addons', defaultFilters: { package_id: id }, search: false, writePerm: 'catalog.write', perPage: 50, embedded: true,
       intro: 'সক্রিয় অ্যাড-অন থাকলে ক্রেতা বেছে নিলে দাম বাড়ে। সব বন্ধ থাকলে প্যাকেজের দাম স্থির থাকে।',
       fields: addonFields, newValues: { is_active: 1, max_quantity: 1 }, toApi: (d) => ({ ...d, package_id: Number(id) }),
       columns: [{ label: 'নাম', key: 'name' }, { label: 'দাম', render: (a) => '+' + taka(a.price_delta) + (a.max_quantity > 1 ? ` <span class="muted small">(সর্বোচ্চ ${bn(a.max_quantity)})</span>` : '') }, { label: '', render: (a) => (a.is_active ? '' : statusPill('বন্ধ', 'bad')) }],
     });
-    await listView($('[data-offers]', root), offerListCfg('package', Number(id)));
+    offersList = await listView($('[data-offers]', root), { ...offerListCfg('package', Number(id)), title: 'সব অফার (টাইমারসহ, উন্নত)', embedded: true, intro: 'উপরের “ছাড় %” এখানে একটি অফার হিসেবেই থাকে। নির্দিষ্ট সময়ের অফার, টাকায় ছাড় বা কাউন্টডাউন টাইমার চাইলে এখান থেকে দিন।' });
   }
 }
 
@@ -335,6 +468,7 @@ const LESSON_KIND = { video: '▶ ভিডিও', link: '🔗 প্রাই�
 export async function courseEditor(root, id) {
   const isNew = id === 'new';
   const c = isNew ? { status: 'coming_soon', level: 'beginner', language: 'বাংলা', price: 0, regular_price: 0 } : await api(`/courses/${id}`);
+  const google = await api('/google').catch(() => ({ configured: false, clientEmail: '' }));
   const cats = (state.lookups.courseCategories || []).map((x) => [x.id, `${x.icon || ''} ${x.name}`.trim()]);
   const fields = [
     { name: 'category_id', label: 'ক্যাটাগরি', type: 'select', options: cats, required: true, numeric: true },
@@ -359,35 +493,65 @@ export async function courseEditor(root, id) {
     { name: 'instructor_bio', label: 'ইনস্ট্রাক্টরের পরিচিতি', type: 'textarea', rows: 3, max: 2000 },
     { name: 'instructor_photo', label: 'ইনস্ট্রাক্টরের ছবি', type: 'image' },
     { name: 'is_featured', label: 'হোমপেজে দেখান', type: 'bool' },
-    { name: 'sort_order', label: 'ক্রম', type: 'number' },
+    { name: 'sort_order', label: 'ক্রম (ছোট সংখ্যা আগে)', type: 'number' },
   ];
   const writable = can('catalog.write');
+  const ST = { draft: ['খসড়া', 'warn'], coming_soon: ['শীঘ্রই আসছে', 'info'], published: ['প্রকাশিত — ভর্তি চালু', 'ok'], archived: ['আর্কাইভ', 'bad'] }[c.status] || ['', ''];
+  const tabs = [...(isNew ? [] : [['lessons', 'অধ্যায় ও লেসন']]), ['basic', 'মূল তথ্য ও দাম'], ['sales', 'বিক্রির লেখা'], ['media', 'ছবি, ভিডিও ও ইনস্ট্রাক্টর']];
   root.innerHTML = `
-    <div class="page-head"><h1>${isNew ? 'নতুন কোর্স' : esc(c.title)}</h1><div class="actions"><a class="btn" href="#/courses">← সব কোর্স</a>${!isNew ? `<a class="btn" href="#/preview?path=${encodeURIComponent('/course/' + c.slug)}">👁 প্রিভিউ</a><a class="btn" href="/course/${esc(c.slug)}" target="_blank" rel="noopener">সেলস পেজ ↗</a><a class="btn" href="/lp/course/${esc(c.slug)}" target="_blank" rel="noopener">বিজ্ঞাপনের পেজ ↗</a><a class="btn" href="#/enrollments?course_id=${c.id}">শিক্ষার্থী</a>` : ''}</div></div>
-    ${!isNew && c.status !== 'published' ? `<p class="card draft small">এখন অবস্থা: <b>${esc({ draft: 'খসড়া', coming_soon: 'শীঘ্রই আসছে', archived: 'আর্কাইভ' }[c.status] || c.status)}</b> — ভর্তি বন্ধ। দাম ও লেসন ঠিক করে অবস্থা “প্রকাশিত” করলেই ভর্তি ও পেমেন্ট চালু হবে।</p>` : ''}
-    <div class="grid" style="grid-template-columns:minmax(0,3fr) minmax(0,2fr);align-items:start">
-      <form class="card grid" data-course>${fields.map((f) => fieldHtml(f, c[f.name])).join('')}
-        ${writable ? '<div><button class="btn primary">সংরক্ষণ করুন</button></div>' : ''}</form>
-      <div class="grid">${isNew ? '<div class="card muted">প্রথমে কোর্সটি সংরক্ষণ করুন, তারপর অধ্যায় ও লেসন যোগ করা যাবে।</div>' : `<div class="card" data-sections></div>
-        <div class="card small"><h3>লেসনের কনটেন্ট কোথায় রাখবেন</h3><ul>
-          <li><b>ভিডিও:</b> ইউটিউবে “Unlisted” করে লিংক দিন (সবচেয়ে সহজ ও দ্রুত), অথবা ভিমিও / গুগল ড্রাইভ (“Anyone with the link”)। ছোট ভিডিও “🔒 প্রাইভেট ভিডিও আপলোড” দিয়ে দিলে শুধু ভর্তি শিক্ষার্থীরাই চালাতে পারবেন।</li>
-          <li><b>প্রাইভেট লিংক:</b> ড্রাইভ ফোল্ডার, গুগল ডক, লাইভ ক্লাসের জুম/মিট, ফেসবুক গ্রুপ — শুধু ভর্তি শিক্ষার্থীরা লেসনের ভেতরে দেখেন, সাইটের কোথাও প্রকাশ পায় না।</li>
-          <li><b>ফাইল:</b> পিডিএফ, শিট, টেমপ্লেট — প্রাইভেট আপলোড; ডাউনলোডের সময় ভর্তি যাচাই হয়।</li>
-          <li><b>ফ্রি প্রিভিউ:</b> যে লেসনে টিক দেবেন সেটি সেলস পেজে সবাই দেখতে পাবে — ১–২টি দিন, বিক্রি বাড়ে।</li></ul>
-          <p class="muted">মনে রাখুন: ইউটিউব/ড্রাইভের লিংক কোনো শিক্ষার্থী চাইলে অন্যকে কপি করে দিতে পারেন — খুব গোপন কনটেন্ট প্রাইভেট আপলোডে রাখুন।</p></div>`}</div>
-    </div>
-    ${isNew ? '' : '<div class="card" data-lessons style="margin-top:1rem"></div>'}`;
+    <a class="back" href="#/courses">← সব কোর্স</a>
+    <div class="page-head"><div><h1>${isNew ? 'নতুন কোর্স' : esc(c.title)}</h1>${isNew ? '' : `<p class="sub"><span class="pill ${ST[1]}">${ST[0]}</span> · /course/${esc(c.slug)}</p>`}</div>
+      <div class="actions">${!isNew ? `<a class="btn" href="#/preview?path=${encodeURIComponent('/course/' + c.slug)}">👁 প্রিভিউ</a><a class="btn" href="/course/${esc(c.slug)}" target="_blank" rel="noopener">সেলস পেজ ↗</a><a class="btn" href="/lp/course/${esc(c.slug)}" target="_blank" rel="noopener">বিজ্ঞাপনের পেজ ↗</a><a class="btn" href="#/enrollments?course_id=${c.id}">শিক্ষার্থী</a>` : ''}</div></div>
+    ${!isNew && c.status !== 'published' ? `<p class="card draft small">ভর্তি এখন বন্ধ। লেসন যোগ করে “মূল তথ্য ও দাম” ট্যাবে দাম দিন ও অবস্থা “প্রকাশিত” করুন — তখনই ভর্তি ও পেমেন্ট চালু হবে।</p>` : ''}
+    ${tabBar(tabs)}
+    ${isNew ? '' : `<section class="tab-panel" data-panel="lessons" data-nosave hidden>
+      <div class="editor-grid">
+        <div class="card" data-lessons></div>
+        <div class="editor-side">
+          <div class="card" data-sections></div>
+          <div class="card small"><h3>লেসনের কনটেন্ট কোথায় রাখবেন</h3><ul style="padding-left:1.1rem;margin:.3rem 0">
+            <li><b>গুগল ড্রাইভ ভিডিও (সবচেয়ে নিরাপদ):</b> ${google.configured ? `ড্রাইভে ভিডিওটি <b>${esc(google.clientEmail)}</b>-এর সাথে Share করুন (Viewer), তারপর লিংকটি এখানে দিন। ফাইল “Restricted” রাখুন — শিক্ষার্থীরা সাইটের ভেতরেই দেখবেন, ড্রাইভ লিংক কেউ পাবে না।` : 'গুগল সার্ভিস অ্যাকাউন্ট যুক্ত হলে ড্রাইভের প্রাইভেট ভিডিও সাইটের ভেতরেই চলবে (এআই ও গুগল পেজ দেখুন)।'}</li>
+            <li><b>ইউটিউব:</b> “Unlisted” করে লিংক দিন — সহজ, তবে লিংক কপি করে অন্যকে দেওয়া যায়।</li>
+            <li><b>প্রাইভেট লিংক:</b> ড্রাইভ ফোল্ডার, ডক, লাইভ ক্লাস (জুম/মিট), গ্রুপ — শুধু ভর্তি শিক্ষার্থীরা দেখেন।</li>
+            <li><b>ফাইল:</b> পিডিএফ, শিট — প্রাইভেট আপলোড অথবা ড্রাইভ ফাইলের লিংক।</li>
+            <li><b>ফ্রি প্রিভিউ:</b> ১–২টি লেসনে টিক দিন — সেলস পেজে সবাই দেখবে, বিক্রি বাড়ে।</li></ul></div>
+        </div>
+      </div>
+    </section>`}
+    <form data-course novalidate>
+      <section class="tab-panel" data-panel="basic" hidden>
+        <div class="card grid"><h2 class="section-title">কোর্সের পরিচয়</h2>${panelFields(fields, ['title', 'subtitle', 'category_id'], c)}<div class="grid g2">${panelFields(fields, ['slug', 'level'], c)}</div></div>
+        <div class="card grid"><h2 class="section-title">দাম ও অবস্থা</h2><div class="grid g2">${panelFields(fields, ['price', 'regular_price', 'status', 'duration_text', 'language', 'sort_order'], c)}</div>${panelFields(fields, ['is_featured'], c)}</div>
+      </section>
+      <section class="tab-panel" data-panel="sales" hidden>
+        <div class="card grid">${panelFields(fields, ['outcomes', 'description', 'audience', 'includes', 'requirements', 'faqs'], c)}</div>
+      </section>
+      <section class="tab-panel" data-panel="media" hidden>
+        <div class="card grid">${panelFields(fields, ['cover_image', 'promo_video_url'], c)}</div>
+        <div class="card grid"><h2 class="section-title">ইনস্ট্রাক্টর</h2>${panelFields(fields, ['instructor_name', 'instructor_bio', 'instructor_photo'], c)}</div>
+      </section>
+    </form>
+    ${writable ? '<div class="savebar" data-savebar><span class="hint">সব ট্যাবের পরিবর্তন একসাথে সংরক্ষণ হবে</span><button class="btn primary" type="button" data-save>সংরক্ষণ করুন</button></div>' : ''}`;
   const form = $('[data-course]', root);
   bindMedia(form);
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  bindTabs(root, isNew ? 'course-new' : 'course');
+  const save = async () => {
     setFieldError(form);
     const data = readForm(form, fields);
+    const btn = $('[data-save]', root);
+    if (btn) btn.disabled = true;
     try {
       if (isNew) { const r = await api('/courses', { method: 'POST', body: data }); state.lookups = await api('/lookups'); toast('কোর্স তৈরি হয়েছে — এবার অধ্যায় ও লেসন যোগ করুন'); location.hash = `#/courses/${r.id}`; }
       else { await api(`/courses/${id}`, { method: 'PUT', body: data }); state.lookups = await api('/lookups'); toast('সংরক্ষিত হয়েছে'); courseEditor(root, id); }
-    } catch (err) { setFieldError(form, err.code, err.message); toast(err.message, true); }
-  });
+    } catch (err) {
+      setFieldError(form, err.code, err.message);
+      const panel = err.code && form.querySelector(`[name="${err.code}"]`)?.closest('[data-panel]');
+      if (panel) $(`.tabs [data-tab="${panel.dataset.panel}"]`, root)?.click();
+      toast(err.message, true);
+    } finally { if (btn) btn.disabled = false; }
+  };
+  $('[data-save]', root)?.addEventListener('click', save);
+  form.addEventListener('submit', (e) => { e.preventDefault(); save(); });
   if (isNew) return;
 
   let sections = [];
@@ -395,30 +559,37 @@ export async function courseEditor(root, id) {
   await loadSections();
   const secName = (sid) => sections.find((x) => x.id === sid)?.title || '—';
   await listView($('[data-sections]', root), {
-    title: 'অধ্যায় (সেকশন)', singular: 'অধ্যায়', endpoint: '/course-sections', defaultFilters: { course_id: id }, search: false, writePerm: 'catalog.write', perPage: 100, titleKey: 'title',
-    intro: 'যেমন: ১. শুরু করার আগে · ২. পেজ সেটআপ · ৩. বিজ্ঞাপন — ক্রম অনুযায়ী সাজানো থাকে।',
+    title: 'অধ্যায়', singular: 'অধ্যায়', endpoint: '/course-sections', defaultFilters: { course_id: id }, search: false, writePerm: 'catalog.write', perPage: 100, titleKey: 'title', embedded: true,
+    intro: 'যেমন: ১. শুরু করার আগে · ২. পেজ সেটআপ · ৩. বিজ্ঞাপন',
     fields: [{ name: 'title', label: 'অধ্যায়ের নাম', required: true, max: 200 }, { name: 'sort_order', label: 'ক্রম', type: 'number', default: 0 }],
     newValues: { sort_order: (sections.at(-1)?.sort_order || 0) + 1 },
     toApi: (d) => { setTimeout(() => loadSections(), 400); return { ...d, course_id: Number(id) }; },
     columns: [{ label: '#', render: (x) => bn(x.sort_order) }, { label: 'অধ্যায়', render: (x) => `<b>${esc(x.title)}</b>` }],
   });
+  const videoLabel = google.configured
+    ? `ভিডিও — গুগল ড্রাইভ লিংক (${google.clientEmail}-এর সাথে শেয়ার করা, সবচেয়ে নিরাপদ) / ইউটিউব আনলিস্টেড / প্রাইভেট আপলোড`
+    : 'ভিডিও — ইউটিউব (আনলিস্টেড) / ভিমিও / ড্রাইভ লিংক অথবা প্রাইভেট আপলোড';
   const lessonFields = () => [
     { name: 'title', label: 'লেসনের নাম', required: true, max: 200 },
     { name: 'section_id', label: 'অধ্যায়', type: 'select', options: () => sections.map((x) => [x.id, `${bn(x.sort_order)}. ${x.title}`]), numeric: true },
     { name: 'kind', label: 'ধরন', type: 'select', options: Object.entries(LESSON_KIND), required: true },
-    { name: 'video_url', label: 'ভিডিও — ইউটিউব (আনলিস্টেড) / ভিমিও / ড্রাইভ লিংক অথবা প্রাইভেট আপলোড', type: 'video', private: true },
+    { name: 'video_url', label: videoLabel, type: 'video', private: true },
     { name: 'link_url', label: 'প্রাইভেট লিংক (শুধু ভর্তি শিক্ষার্থী দেখবেন) — ড্রাইভ ফোল্ডার, ডক, লাইভ ক্লাস, গ্রুপ', inputType: 'url', placeholder: 'https://', max: 1000 },
-    { name: 'file_key', label: 'ফাইল (পিডিএফ / শিট / টেমপ্লেট)', type: 'privatefile' },
+    { name: 'file_key', label: google.configured ? 'ফাইল — প্রাইভেট আপলোড অথবা গুগল ড্রাইভ ফাইলের লিংক' : 'ফাইল (পিডিএফ / শিট / টেমপ্লেট)', type: 'privatefile', allowLink: google.configured },
     { name: 'body', label: 'লেসনের নোট / লেখা (ভিডিওর নিচে দেখাবে)', type: 'textarea', rows: 5, max: 20000 },
     { name: 'duration_text', label: 'সময়', max: 40, placeholder: 'যেমন ১২ মিনিট' },
     { name: 'sort_order', label: 'ক্রম (অধ্যায়ের ভেতরে)', type: 'number', default: 0 },
     { name: 'is_preview', label: 'ফ্রি প্রিভিউ — ভর্তির আগেই সেলস পেজে সবাই দেখবে', type: 'bool' },
     { name: 'is_active', label: 'সক্রিয়', type: 'bool', default: 1 },
   ];
-  const content = (l) => [l.video_url ? (String(l.video_url).startsWith('private/') ? '🔒 ভিডিও' : '▶ ভিডিও') : '', l.link_url ? '🔗 লিংক' : '', l.file_key ? '📄 ফাইল' : '', l.body ? '📝 নোট' : ''].filter(Boolean).join(' · ');
+  const isDrive = (v) => /drive\.google\.com|docs\.google\.com/.test(String(v || ''));
+  const content = (l) => [
+    l.video_url ? (String(l.video_url).startsWith('private/') ? '🔒 ভিডিও' : isDrive(l.video_url) && google.configured ? '🔒 ড্রাইভ ভিডিও' : '▶ ভিডিও') : '',
+    l.link_url ? '🔗 লিংক' : '', l.file_key ? '📄 ফাইল' : '', l.body ? '📝 নোট' : '',
+  ].filter(Boolean).join(' · ');
   await listView($('[data-lessons]', root), {
-    title: 'লেসন', singular: 'লেসন', endpoint: '/course-lessons', defaultFilters: { course_id: id }, writePerm: 'catalog.write', perPage: 200, titleKey: 'title', wideForm: true,
-    intro: 'প্রতিটি লেসনে ভিডিও, প্রাইভেট লিংক, ফাইল ও নোট — যেকোনোটি বা একসাথে কয়েকটি দেওয়া যায়। শিক্ষার্থী প্রোফাইলে লেসন ধরে ধরে দেখেন, কোনটি শেষ করেছেন মনে থাকে।',
+    title: 'লেসন', singular: 'লেসন', endpoint: '/course-lessons', defaultFilters: { course_id: id }, writePerm: 'catalog.write', perPage: 200, titleKey: 'title', wideForm: true, embedded: true,
+    intro: 'প্রতিটি লেসনে ভিডিও, প্রাইভেট লিংক, ফাইল ও নোট — যেকোনোটি বা কয়েকটি একসাথে। শিক্ষার্থী প্রোফাইলে লেসন ধরে ধরে দেখেন।',
     filters: [{ name: 'section_id', label: 'অধ্যায়', options: () => sections.map((x) => [x.id, x.title]) }],
     fields: lessonFields,
     newValues: { kind: 'video', is_active: 1, sort_order: 0 },
@@ -579,7 +750,18 @@ export async function chatSettingsView(root) {
 export async function aiSettingsView(root) {
   const d = await api('/ai/configs');
   const pl = { gemini: 'জেমিনি (গুগল)', workers_ai: 'ক্লাউডফ্লেয়ার ওয়ার্কার্স এআই', openai: 'ওপেনএআই' };
-  root.innerHTML = `<div class="page-head"><h1>এআই সেটিংস</h1></div>
+  const g = await api('/google').catch(() => ({ configured: false, secretSet: false, clientEmail: '', projectId: '' }));
+  root.innerHTML = `<div class="page-head"><div><h1>এআই ও গুগল</h1><p class="sub">গুগল সার্ভিস অ্যাকাউন্ট (প্রাইভেট ড্রাইভ ভিডিও) ও এআই লেখা/চ্যাট</p></div></div>
+    <div class="card grid" style="max-width:760px;margin-bottom:1rem" data-google>
+      <div class="card-head"><h2>গুগল সার্ভিস অ্যাকাউন্ট</h2>${g.configured ? statusPill('সংযুক্ত', 'ok') : statusPill(g.secretSet ? 'JSON সঠিক নয়' : 'যুক্ত হয়নি', 'warn')}</div>
+      ${g.configured
+        ? `<p class="small">ইমেইল: <code>${esc(g.clientEmail)}</code>${g.projectId ? ` · প্রজেক্ট: <code>${esc(g.projectId)}</code>` : ''}</p>
+           <p class="small muted">কোর্সের ভিডিও বা ফাইল গুগল ড্রাইভে রেখে এই ইমেইলের সাথে Share (Viewer) করুন, তারপর লেসনে ড্রাইভ লিংকটি দিন। ফাইল “Restricted” থাকবে — শুধু ভর্তি শিক্ষার্থীরা সাইটের ভেতরে দেখবেন, ড্রাইভ লিংক কেউ পাবে না।</p>`
+        : `<p class="small muted">GitHub রিপোজিটরির Settings → Secrets → Actions-এ <code>GOOGLE_SERVICES_JSON</code> নামে সার্ভিস অ্যাকাউন্টের পুরো JSON রাখুন, তারপর ডিপ্লয় আবার চালান।</p>`}
+      <label>পরীক্ষার জন্য একটি ড্রাইভ ফাইলের লিংক (ঐচ্ছিক)<input data-g-url placeholder="https://drive.google.com/file/d/…/view"></label>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">${can('settings.write') ? '<button class="btn primary" type="button" data-g-check>পরীক্ষা করুন</button>' : ''}</div>
+      <ul class="check-steps" data-g-out></ul>
+    </div>
     <p class="muted">এপিআই কী কখনো এখানে লেখা বা সংরক্ষণ করা হয় না — GitHub রিপোজিটরির Settings → Secrets → Actions-এ <code>GEMINI_API_KEY</code> রাখুন, পরের ডিপ্লয়ে নিজে থেকেই যুক্ত হয়। এখানে শুধু লুকানো আকারে অবস্থা দেখানো হয়। চ্যাটে জেমিনি কাজ না করলে সাইট নিজে থেকে ক্লাউডফ্লেয়ার এআই দিয়ে উত্তর দেয়।</p>
     <datalist id="ai-models"><option value="gemini-2.5-flash"><option value="gemini-flash-latest"><option value="gemini-2.5-flash-lite"><option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast"><option value="gpt-4o-mini"></datalist>
     ${d.configs.map((c) => `<form class="card grid" data-purpose="${c.purpose}" style="max-width:760px;margin-bottom:1rem">
@@ -591,7 +773,18 @@ export async function aiSettingsView(root) {
       <label>লেখার ধরন<input name="tone" value="${esc(c.tone)}"></label>
       <div style="display:flex;gap:.5rem">${can('ai.configure') ? '<button class="btn primary">সংরক্ষণ</button>' : ''}${can('ai.use') ? '<button class="btn" type="button" data-test>সংযোগ পরীক্ষা</button>' : ''}</div>
       <p class="small" data-test-out></p></form>`).join('')}`;
-  $$('form', root).forEach((f) => {
+  $('[data-g-check]', root)?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const out = $('[data-g-out]', root);
+    btn.disabled = true;
+    out.innerHTML = '<li>পরীক্ষা চলছে…</li>';
+    try {
+      const r = await api('/google/check', { method: 'POST', body: { url: $('[data-g-url]', root).value.trim() } });
+      out.innerHTML = r.steps.map((x) => `<li class="${x.ok ? 'ok' : 'bad'}">${x.ok ? '✓' : '✗'} ${esc(x.text)}</li>`).join('');
+    } catch (err) { out.innerHTML = `<li class="bad">${esc(err.message)}</li>`; }
+    btn.disabled = false;
+  });
+  $$('form[data-purpose]', root).forEach((f) => {
     f.addEventListener('submit', async (e) => { e.preventDefault(); try { await api(`/ai/configs/${f.dataset.purpose}`, { method: 'PUT', body: Object.fromEntries(new FormData(f)) }); toast('সংরক্ষিত হয়েছে'); aiSettingsView(root); } catch (err) { toast(err.message, true); } });
     $('[data-test]', f)?.addEventListener('click', async () => {
       const out = $('[data-test-out]', f); out.textContent = 'পরীক্ষা চলছে…';
@@ -831,6 +1024,18 @@ export async function previewView(root, startPath) {
 export function helpView(root) {
   root.innerHTML = `<div class="card help" style="max-width:860px"><h1>সহায়তা কেন্দ্র</h1>
   <h2>নতুন প্যাকেজ যোগ করা</h2><ol><li>বাম মেনু › প্যাকেজ › “+ নতুন প্যাকেজ”।</li><li>নাম, দাম ও ফিচার লিখে সংরক্ষণ করুন।</li><li>“এআই দিয়ে সাজেস্ট” চাপলে একটি খসড়া আসবে — পড়ে, সম্পাদনা করে অনুমোদন দিন।</li><li>স্ক্রিনশট ও ছোট ডেমো ভিডিও আপলোড করুন, লাইভ ডেমো লিংক দিন।</li><li>অ্যাড-অন ও অফার ডান পাশ থেকে যোগ করুন।</li></ol>
+  <h2>দাম ও ছাড় বদলানো</h2><ol>
+    <li><b>প্যাকেজ ও দাম</b> › প্যাকেজ খুলুন › “দাম ও অফার” ট্যাব।</li>
+    <li>“নিয়মিত দাম” লিখুন (যেমন ১২০০০), ছাড় দিতে চাইলে “ছাড় %” লিখুন (যেমন ৫০) — নিচে দেখাবে ক্রেতা কী দাম দেখবেন (৳৬,০০০, পাশে ৳১২,০০০ কাটা)।</li>
+    <li>“সংরক্ষণ করুন” চাপুন। চেকআউটেও এই দামই নেওয়া হয়। ছাড় বন্ধ করতে “ছাড় %” খালি করে সংরক্ষণ করুন।</li></ol>
+  <h2>পাবলিক সাইট কখন আপডেট হয়</h2><p>shop.sayadbayezid.com হলো সাইটের একটি কপি (GitHub Pages)। দাম ও অফার সেখানে সাথে সাথেই ঠিক দেখায়। বাকি লেখা, ছবি বা নতুন প্যাকেজ/কোর্স দেখাতে উপরের “↻ সাইট আপডেট” চাপুন। প্রতিবার নিজে থেকে আপডেট চাইলে একবার এটি করুন:</p><ol>
+    <li>GitHub › Settings › Developer settings › Fine-grained tokens › Generate new token — Repository access: শুধু <code>shop.sayadbayezid.com</code>, Permissions › Actions: <b>Read and write</b>।</li>
+    <li>রিপোজিটরির Settings › Secrets › Actions › New secret — নাম <code>PAGES_REFRESH_TOKEN</code>, মান: টোকেনটি।</li>
+    <li>Actions › “Deploy to Cloudflare Workers” › Run workflow। এরপর প্রতিটি পরিবর্তন ১–২ মিনিটে পাবলিক সাইটে যাবে।</li></ol>
+  <h2>গুগল ড্রাইভের প্রাইভেট ভিডিও</h2><ol>
+    <li>ভিডিও/ফাইল ড্রাইভে রাখুন, “Share”-এ সার্ভিস অ্যাকাউন্টের ইমেইল (এআই ও গুগল পেজে দেখানো) Viewer হিসেবে যোগ করুন। General access “Restricted” রাখুন।</li>
+    <li>কোর্স › লেসন › ভিডিও ঘরে ড্রাইভ লিংকটি দিন। ভর্তি শিক্ষার্থীরা সাইটের ভেতরেই দেখবেন; ড্রাইভ লিংক কারও কাছে যাবে না, আর ভর্তি না হলে কেউ চালাতে পারবে না।</li>
+    <li>যাচাই করতে: এআই ও গুগল › লিংক দিয়ে “পরীক্ষা করুন”।</li></ol>
   <h2>কোর্স বিক্রি — শুরু থেকে শেষ</h2><ol>
     <li><b>কোর্স ক্যাটাগরি</b> › “+ নতুন” — যত খুশি ক্যাটাগরি (ডিজিটাল মার্কেটিং, ডেভেলপমেন্ট, পাইথন…)।</li>
     <li><b>কোর্স</b> › “+ নতুন” — নাম, দাম, কভার, পরিচিতি ভিডিও, যা শিখবেন, প্রশ্নোত্তর লিখে সংরক্ষণ করুন।</li>

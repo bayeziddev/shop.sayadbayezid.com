@@ -46,10 +46,22 @@ export function phoneFrame(src: string, alt: string): Raw {
 
 export function priceBlock(p: PublicPackage, now: number): Raw {
   const line = priceLine({ id: p.id, categoryId: p.categoryId, basePrice: p.basePrice, addons: [], offers: p.offers }, { packageId: p.id, addons: [] }, now);
+  // data-live-price: the static (GitHub Pages) copy refreshes this from the API, so a new price or offer shows at once.
   if (line.offerDiscount > 0) {
-    return html`<div class="price"><strong>${taka(line.total)}</strong> <s>${taka(line.subtotal)}</s></div>`;
+    return html`<div class="price" data-live-price="${p.id}"><strong>${taka(line.total)}</strong> <s>${taka(line.subtotal)}</s></div>`;
   }
-  return html`<div class="price"><strong>${taka(p.basePrice)}</strong> <span class="price-from">এককালীন</span></div>`;
+  return html`<div class="price" data-live-price="${p.id}"><strong>${taka(p.basePrice)}</strong> <span class="price-from">এককালীন</span></div>`;
+}
+
+/** Today's price of a package without add-ons: the base price minus the best live offer. */
+export function currentPrice(p: PublicPackage, now: number): number {
+  return priceLine({ id: p.id, categoryId: p.categoryId, basePrice: p.basePrice, addons: [], offers: p.offers }, { packageId: p.id, addons: [] }, now).total;
+}
+
+/** Offer badge slot (kept even when empty, so the static copy can show an offer added after it was built). */
+export function offerSlot(p: PublicPackage, now: number): Raw {
+  const offer = liveOffer(p, now);
+  return html`<span class="live-offer" data-live-offer="${p.id}">${offer ? offerBadge(offer) : ''}</span>`;
 }
 
 export function liveOffer(p: PublicPackage, now: number) {
@@ -88,7 +100,7 @@ export function packageCard(p: PublicPackage, coupons: CouponRow[], now: number)
   return html`<article class="card pkg-card ${soon ? 'is-soon' : ''}" data-cat="${p.categorySlug || ''}" data-edit="package:${p.id}">
   <a href="/package/${p.slug}" class="pkg-media" aria-label="${p.name} — বিস্তারিত দেখুন">${browserFrame(p)}${p.video ? html`<span class="pkg-video-badge">▶ ভিডিও</span>` : ''}</a>
   <div class="pkg-body">
-    <div class="pkg-tags"><span class="badge">${p.categoryName || tierLabel(p.tier)}</span>${offer ? offerBadge(offer) : ''}${soon ? html`<span class="badge badge-soon">শীঘ্রই আসছে</span>` : ''}</div>
+    <div class="pkg-tags"><span class="badge">${p.categoryName || tierLabel(p.tier)}</span>${offerSlot(p, now)}${soon ? html`<span class="badge badge-soon">শীঘ্রই আসছে</span>` : ''}</div>
     <h3><a href="/package/${p.slug}">${p.name}</a></h3>
     <p class="muted">${p.shortDescription}</p>
     ${p.features.length ? html`<ul class="mini-features">${p.features.slice(0, 3).map((f) => html`<li>${f}</li>`)}</ul>` : ''}

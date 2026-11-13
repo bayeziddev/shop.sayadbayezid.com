@@ -121,6 +121,8 @@ function health(c: { env: AppBindings['Bindings'] }, s: SiteSettings) {
     { key: 'whatsapp', label: 'হোয়াটসঅ্যাপ নোটিফিকেশন', ok: !!(e.WHATSAPP_TOKEN && e.WHATSAPP_PHONE_NUMBER_ID), hint: 'ঐচ্ছিক' },
     { key: 'encryption', label: 'তথ্য এনক্রিপশন কী', ok: !!e.DATA_ENCRYPTION_KEY, hint: 'আবশ্যক — DATA_ENCRYPTION_KEY' },
     { key: 'storage', label: 'ফাইল সংরক্ষণ (আর২)', ok: !!e.MEDIA, hint: 'ক্লাউডফ্লেয়ার ড্যাশবোর্ডে আর২ চালু করে আবার ডিপ্লয় করুন — ছবি ও ফাইল আপলোডের জন্য দরকার' },
+    { key: 'google', label: 'গুগল ড্রাইভ (প্রাইভেট কোর্স ভিডিও)', ok: !!serviceAccount(e), hint: e.GOOGLE_SERVICES_JSON ? 'GOOGLE_SERVICES_JSON সঠিক সার্ভিস অ্যাকাউন্ট JSON নয়' : 'ঐচ্ছিক — GOOGLE_SERVICES_JSON সিক্রেট যোগ করুন' },
+    ...(e.PUBLIC_SITE_URL ? [{ key: 'storefront', label: 'পাবলিক সাইট তাৎক্ষণিক আপডেট', ok: !!(e.PAGES_REFRESH_TOKEN && e.GITHUB_REPO), hint: 'ঐচ্ছিক — PAGES_REFRESH_TOKEN সিক্রেট যোগ করলে প্রতিটি পরিবর্তন ১–২ মিনিটে পাবলিক সাইটে যায়' }] : []),
   ];
 }
 

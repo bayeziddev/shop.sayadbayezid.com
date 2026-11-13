@@ -53,6 +53,17 @@ if (existing) {
 }
 render();
 
+// On the static copy, live-prices.js brings today's price and offers from the API: use them.
+const useLive = (list) => {
+  const live = (list || []).find((x) => x.id === pkg.id);
+  if (!live) return;
+  pricingPkg.basePrice = live.basePrice;
+  pricingPkg.offers = live.offers;
+  render();
+};
+useLive(window.__sbLivePackages);
+window.addEventListener('sb:live-packages', (e) => useLive(e.detail));
+
 form.addEventListener('submit', (e) => {
   e.preventDefault();
   const sel = selection();
